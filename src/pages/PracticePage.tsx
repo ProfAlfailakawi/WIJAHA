@@ -602,13 +602,14 @@ function CompetencyRadarSvg({
   const axes = ALL_COMPETENCY_AXES.map((code) => ({
     code,
     assessed: itemMap.has(code),
-    pct: itemMap.get(code) ?? 42,
+    // D1: never invent a value for a competency that was not assessed in this session
+    pct: itemMap.get(code) ?? null,
   }));
   const count = axes.length;
 
   const getPoint = (idx: number, pct: number) => {
     const angle = (Math.PI * 2 * idx) / count - Math.PI / 2;
-    const r = (Math.max(18, pct) / 100) * radius;
+    const r = (Math.max(0, Math.min(100, pct)) / 100) * radius;
     return {
       x: center + r * Math.cos(angle),
       y: center + r * Math.sin(angle),
@@ -619,12 +620,19 @@ function CompetencyRadarSvg({
     };
   };
 
-  const polygonPoints = axes
-    .map((ax, idx) => {
-      const pt = getPoint(idx, ax.pct);
-      return `${pt.x},${pt.y}`;
-    })
-    .join(' ');
+  const assessedAxes = axes
+    .map((ax, idx) => ({ ...ax, idx }))
+    .filter((ax): ax is typeof ax & { pct: number } => ax.pct !== null);
+  // Only connect real scores; with fewer than 3 assessed axes a polygon would imply data that does not exist.
+  const polygonPoints =
+    assessedAxes.length >= 3
+      ? assessedAxes
+          .map((ax) => {
+            const pt = getPoint(ax.idx, ax.pct);
+            return `${pt.x},${pt.y}`;
+          })
+          .join(' ')
+      : null;
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} className="w-56 h-56 select-none" aria-hidden="true">
@@ -640,7 +648,7 @@ function CompetencyRadarSvg({
         />
       ))}
       {axes.map((ax, idx) => {
-        const pt = getPoint(idx, ax.pct);
+        const pt = getPoint(idx, 100);
         return (
           <line
             key={`spoke-${ax.code}`}
@@ -654,22 +662,34 @@ function CompetencyRadarSvg({
           />
         );
       })}
-      <polygon
-        points={polygonPoints}
-        fill="rgba(176, 141, 87, 0.22)"
-        stroke="var(--gold)"
-        strokeWidth="2"
-      />
+      {polygonPoints && (
+        <polygon
+          points={polygonPoints}
+          fill="rgba(176, 141, 87, 0.22)"
+          stroke="var(--gold)"
+          strokeWidth="2"
+        />
+      )}
+      {assessedAxes.map((ax) => {
+        const pt = getPoint(ax.idx, ax.pct);
+        return (
+          <line
+            key={`value-${ax.code}`}
+            x1={center}
+            y1={center}
+            x2={pt.x}
+            y2={pt.y}
+            stroke="var(--gold)"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        );
+      })}
       {axes.map((ax, idx) => {
-        const pt = getPoint(idx, ax.pct);
+        const pt = getPoint(idx, ax.pct ?? 0);
         return (
           <g key={ax.code}>
-            <circle
-              cx={pt.x}
-              cy={pt.y}
-              r={ax.assessed ? '4' : '2.5'}
-              fill={ax.assessed ? 'var(--primary)' : 'var(--ink-3)'}
-            />
+            {ax.pct !== null && <circle cx={pt.x} cy={pt.y} r="4" fill="var(--primary)" />}
             <text
               x={pt.lx}
               y={pt.ly + 4}
