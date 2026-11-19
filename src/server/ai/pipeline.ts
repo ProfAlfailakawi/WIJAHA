@@ -19,6 +19,7 @@ import {
 } from '../../shared/types.ts';
 import type { RetrievedRule } from '../knowledge/retrieval.ts';
 import { callGeminiJson, getAiProviderStatus } from './provider.ts';
+import { classifyIntent, OUT_OF_SCOPE_RE, stripNegatedMentions, UNSAFE_RE } from './intent-lexicon.ts';
 
 export interface ExtractedEntities {
   intent: IntentType;
@@ -47,6 +48,15 @@ const COUNTRY_PATTERNS: Array<{
   { iso: 'DE', ar: 'ألمانيا', en: 'Germany', tokens: ['المانيا', 'الماني', 'برلين', 'germany', 'german', 'berlin'] },
   { iso: 'FR', ar: 'فرنسا', en: 'France', tokens: ['فرنسا', 'فرنسي', 'باريس', 'france', 'french', 'paris'] },
   { iso: 'US', ar: 'الولايات المتحدة', en: 'United States', tokens: ['امريكا', 'واشنطن', 'usa', 'american', 'washington'] },
+  { iso: 'EU', ar: 'أوروبا', en: 'Europe', tokens: ['اوروب', 'europe', 'european'] },
+  { iso: 'TR', ar: 'تركيا', en: 'Türkiye', tokens: ['تركيا', 'تركي', 'انقره', 'turkey', 'turkish', 'türkiye'] },
+  { iso: 'IN', ar: 'الهند', en: 'India', tokens: ['الهند', 'هندي', 'دلهي', 'india', 'indian', 'delhi'] },
+  { iso: 'KR', ar: 'كوريا', en: 'Korea', tokens: ['كوريا', 'كوري', 'سيول', 'korea', 'korean', 'seoul'] },
+  { iso: 'BR', ar: 'البرازيل', en: 'Brazil', tokens: ['البرازيل', 'برازيلي', 'brazil', 'brazilian'] },
+  { iso: 'IT', ar: 'إيطاليا', en: 'Italy', tokens: ['ايطاليا', 'ايطالي', 'روما', 'italy', 'italian', 'rome'] },
+  { iso: 'ES', ar: 'إسبانيا', en: 'Spain', tokens: ['اسبانيا', 'اسباني', 'مدريد', 'spain', 'spanish', 'madrid'] },
+  { iso: 'MY', ar: 'ماليزيا', en: 'Malaysia', tokens: ['ماليزيا', 'ماليزي', 'malaysia', 'malaysian'] },
+  { iso: 'RU', ar: 'روسيا', en: 'Russia', tokens: ['روسيا', 'روسي', 'موسكو', 'russia', 'russian', 'moscow'] },
   { iso: 'KW', ar: 'الكويت', en: 'Kuwait', tokens: ['كويت', 'الكويت', 'kuwait', 'kuwaiti'] },
   { iso: 'SA', ar: 'السعودية', en: 'Saudi Arabia', tokens: ['سعوديه', 'الرياض', 'saudi', 'riyadh'] },
 ];
@@ -103,17 +113,12 @@ export function analyzeIntentAndContextPure(rawQuery: string): ExtractedEntities
   const lower = rawQuery.toLowerCase();
 
   // Out of scope check
-  const outOfScopeKeywords = [
-    'سعر الذهب',
-    'حاله الطقس',
-    'مباراه كره',
-    'bitcoin',
-    'crypto',
-    'stock price',
-    'football score',
-  ];
-  if (outOfScopeKeywords.some((kw) => norm.includes(normalizeArabic(kw)) || lower.includes(kw))) {
+  if (OUT_OF_SCOPE_RE.test(norm)) {
     return { intent: 'out_of_scope', sensitivity: 'low' };
+  }
+
+  if (UNSAFE_RE.test(norm) || UNSAFE_RE.test(lower)) {
+    return { intent: 'unsafe', sensitivity: 'low' };
   }
 
   // Country detection
@@ -161,119 +166,7 @@ export function analyzeIntentAndContextPure(rawQuery: string): ExtractedEntities
   else if (norm.includes('انجليزيه') || lower.includes('in english') || lower.includes('english invitation'))
     requestedDraftLang = 'en';
 
-  // Intent classification priority order
-  let intent: IntentType = 'etiquette_personal';
-
-  if (
-    norm.includes('ابي خبير') ||
-    norm.includes('مراجعه خبير') ||
-    lower.includes('specialist to review') ||
-    lower.includes('protocol specialist')
-  ) {
-    intent = 'expert_request';
-  } else if (
-    norm.includes('دوره تدريبيه') ||
-    norm.includes('برنامج تدريبي') ||
-    norm.includes('نبي دوره') ||
-    lower.includes('training workshop') ||
-    lower.includes('protocol training')
-  ) {
-    intent = 'training_request';
-  } else if (
-    norm.includes('افحص') ||
-    norm.includes('مراجعه مسوده برنامج') ||
-    lower.includes('audit my delegation') ||
-    lower.includes('buffer timing risks')
-  ) {
-    intent = 'plan_review';
-  } else if (
-    norm.includes('اكتب دعوه') ||
-    norm.includes('اكتب مسوده دعوه') ||
-    norm.includes('نكتب دعوه') ||
-    lower.includes('draft a formal invitation') ||
-    lower.includes('write a formal') ||
-    lower.includes('invitation letter')
-  ) {
-    intent = 'formal_invitation';
-  } else if (
-    norm.includes('هديه') ||
-    norm.includes('نهدي') ||
-    lower.includes('gift')
-  ) {
-    intent = 'gift_question';
-  } else if (
-    norm.includes('ترتيب الجلوس') ||
-    norm.includes('نرتب الجلوس') ||
-    norm.includes('الجلوس علي طاوله') ||
-    norm.includes('ترتيب المقاعد') ||
-    norm.includes('ترتيب الكراسي') ||
-    norm.includes('الاسبقي') ||
-    norm.includes('قعده الطاوله') ||
-    norm.includes('وين يقعد') ||
-    lower.includes('seating') ||
-    lower.includes('precedence') ||
-    lower.includes('interpreter sit')
-  ) {
-    intent = 'seating_precedence';
-  } else if (
-    norm.includes('بزور') ||
-    norm.includes('بنزور') ||
-    norm.includes('سنسافر') ||
-    norm.includes('زياره عمل لشركاء') ||
-    lower.includes('traveling to') ||
-    lower.includes('visiting business partners')
-  ) {
-    intent = 'business_trip_abroad';
-  } else if (
-    norm.includes('بالمطعم') ||
-    norm.includes('في مطعم') ||
-    norm.includes('نسدد الفاتوره') ||
-    lower.includes('restaurant')
-  ) {
-    intent = 'hosting_hospitality';
-  } else if (
-    norm.includes('مذكره تفاهم') ||
-    norm.includes('خطة استقبال وفد') ||
-    norm.includes('خطه استقبال وفد') ||
-    norm.includes('برنامج استقبال وفد') ||
-    norm.includes('وفد اكاديمي') ||
-    norm.includes('وفد جامعي') ||
-    lower.includes('academic delegation') ||
-    lower.includes('sign an mou') ||
-    lower.includes('reception plan for a visiting')
-  ) {
-    intent = 'delegation_visit_host';
-  } else if (
-    norm.includes('لبس') ||
-    norm.includes('البس') ||
-    norm.includes('اللباس') ||
-    norm.includes('بشت') ||
-    lower.includes('dress code')
-  ) {
-    intent = 'dress_code';
-  } else if (
-    norm.includes('نخاطب') ||
-    norm.includes('شنو نقول حق معالي') ||
-    norm.includes('كرت الاسم') ||
-    lower.includes('how should we address')
-  ) {
-    intent = 'greeting_titles';
-  } else if (
-    norm.includes('نبذه ثقافيه') ||
-    norm.includes('العادات المهمه') ||
-    lower.includes('cultural etiquette briefing')
-  ) {
-    intent = 'cultural_briefing';
-  } else if (
-    norm.includes('عشاء رسمي') ||
-    norm.includes('المنديل') ||
-    norm.includes('الشوكه والسكين') ||
-    lower.includes('formal corporate dinner') ||
-    lower.includes('flatware') ||
-    lower.includes('formal business dinner')
-  ) {
-    intent = 'dining_etiquette';
-  }
+  const intent: IntentType = classifyIntent(stripNegatedMentions(norm)).intent;
 
   let sensitivity: SensitivityLevel = 'low';
   if (isHigh) {
