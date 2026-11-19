@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "wijaha",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,12 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts src/server/security-and-billing.test.ts",
-    "evals": "tsx evals/run-evals.ts"
+    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts",
+    "evals": "tsx evals/run-evals.ts",
+    "test:integration": "tsx --test src/server/security-and-billing.test.ts tests/security-regressions.test.ts tests/build-assets.test.ts",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "drizzle-kit migrate --config src/db/drizzle.config.ts",
+    "db:seed": "tsx src/db/seed-cli.ts"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -45,7 +49,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.27.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
