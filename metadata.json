@@ -1,0 +1,6 @@
+{
+  "name": "وجاهة | WIJAHA",
+  "description": "منصة ذكية للبروتوكول والمراسم والعلاقات الدولية وتنظيم الوفود والمحاكاة — اكتب مناسبتك، ونجهّز لك الباقي.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

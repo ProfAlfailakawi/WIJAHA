@@ -1,0 +1,262 @@
+{
+  "meta": {
+    "skipToContent": "Skip to main content",
+    "demoBanner": "Preview Environment — All protocol rules and scenarios are flagged as 'Unapproved Demo Content'",
+    "offlineBanner": "You are currently offline. Your draft input is preserved locally."
+  },
+  "nav": {
+    "myProjects": "My Projects",
+    "practice": "Practice",
+    "checkPlan": "Check My Plan",
+    "experts": "Experts",
+    "pricing": "Pricing",
+    "signIn": "Sign In",
+    "account": "Account",
+    "organization": "Organization",
+    "admin": "Admin",
+    "signOut": "Sign Out",
+    "switchLang": "ع"
+  },
+  "home": {
+    "promise": "Describe your occasion, and we prepare the rest",
+    "subtitle": "Search · Understand · Prepare · Practice · Execute",
+    "placeholders": [
+      "We are hosting a VIP Chinese delegation at our restaurant tomorrow — what should we prepare?",
+      "I am attending my first formal dinner — how should I conduct myself?",
+      "An academic delegation from Poland is visiting to sign an MoU"
+    ],
+    "examples": [
+      { "label": "Formal dinner", "query": "I have a formal business dinner, how should I prepare and behave?" },
+      { "label": "Host a delegation", "query": "We are hosting a VIP delegation from China tomorrow at our restaurant, what do we prepare?" },
+      { "label": "Business trip abroad", "query": "We are visiting business partners in Warsaw, Poland — what protocol preparation do we need?" }
+    ],
+    "sendAria": "Submit occasion",
+    "charLimit": "Maximum 2,000 characters",
+    "networkError": "Unable to prepare your result right now. Your text is saved.",
+    "retry": "Try again",
+    "recentProjects": "Recent projects:"
+  },
+  "footer": {
+    "about": "About WIJAHA",
+    "methodology": "Methodology",
+    "checkPlan": "Check My Plan",
+    "practice": "Practice",
+    "experts": "Experts",
+    "pricing": "Pricing",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "disclaimer": "Disclaimer"
+  },
+  "result": {
+    "streaming": {
+      "understanding": "Understanding your occasion and context…",
+      "retrieving": "Reviewing relevant protocol and hospitality rules…",
+      "generating": "Preparing actionable deliverables and summary…"
+    },
+    "clarificationTitle": "One question to sharpen accuracy",
+    "skip": "Skip",
+    "assumptionPrefix": "Editable assumption:",
+    "changeAssumption": "Change",
+    "editChipPrompt": "Update context chip and regenerate result:",
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "summaryTitle": "Top 3 Priorities Right Now",
+    "highSensitivityAlert": "This is a high-sensitivity official occasion. The deliverables below are advisory; we recommend a senior protocol review before final sign-off.",
+    "demoRuleBadge": "Unapproved Demo Content",
+    "levels": {
+      "official": "Official",
+      "customary": "Customary",
+      "advisory": "Advisory"
+    },
+    "blocks": {
+      "answerTitle": "Focused Protocol Guidance",
+      "checklistTitle": "Operational Readiness Checklist",
+      "checklistProgress": "Readiness completion",
+      "criticalTag": "Critical",
+      "timelineTitle": "Visit Itinerary & Run-of-Show",
+      "draftTitle": "Suggested Correspondence Draft",
+      "draftCopy": "Copy text",
+      "draftCopied": "Copied",
+      "draftReviewNotice": "Mandatory Review Notice: Formal correspondence or third-language drafts must be verified by a native speaker or protocol officer prior to dispatch.",
+      "seatingTitle": "2D Seating & Precedence Floorplan",
+      "seatingPrecedenceWarning": "Official order of precedence is determined by the host institution; this diagram is a working proposal for review.",
+      "seatingDiagramTab": "Visual Floorplan",
+      "seatingListTab": "Ordered List (Screen-Reader Friendly)",
+      "swapSeatUp": "Promote seat",
+      "swapSeatDown": "Demote seat",
+      "expertReviewTitle": "Specialist Review Recommendation"
+    },
+    "actions": {
+      "saveProject": "Save as Project",
+      "share": "Share Link",
+      "practice": "Practice This Scenario",
+      "followup": "Ask a Follow-up",
+      "exportPdf": "Download Plan (PDF)",
+      "exportDocx": "Export Word (DOCX)"
+    },
+    "trust": {
+      "basedOn": "Grounded in",
+      "rulesCount": "knowledge rules",
+      "demoNotice": "demo preview rules (draft_demo)",
+      "unreviewedWarning": "Some items reflect general professional advice not tied to an approved rule — marked 'Advisory'.",
+      "sourcesBtn": "View Sources & Rules",
+      "helpfulPrompt": "Was this result helpful?",
+      "helpfulYes": "Helpful",
+      "helpfulNo": "Needs work",
+      "reportError": "Report an issue",
+      "reportPlaceholder": "Briefly describe the inaccuracy or protocol note…",
+      "submitReport": "Send report",
+      "feedbackSaved": "Thank you — your feedback was routed to our expert review queue."
+    },
+    "expertBridge": {
+      "requestBtn": "Request Expert Review",
+      "noThanks": "No, thanks"
+    },
+    "followupPlaceholder": "Add a detail or ask a follow-up question about this occasion…",
+    "followupSend": "Update"
+  },
+  "projects": {
+    "title": "Saved Projects",
+    "searchPlaceholder": "Search your projects…",
+    "empty": "No saved projects yet. Start with an occasion from the home page.",
+    "goHome": "Go to Home Search",
+    "lastUpdated": "Last modified:",
+    "versions": "Version History",
+    "restore": "Restore version",
+    "currentVersion": "Current version",
+    "saveEdits": "Save Edits as New Version",
+    "updatePlanTitle": "Update Plan When Circumstances Change",
+    "updatePlanPlaceholder": "Example: Delegation increased to 12 guests and arrival moved one day later…",
+    "updatePlanBtn": "Update Plan",
+    "whatChanged": "What changed in this version:",
+    "shareCopied": "Temporary share link copied to clipboard",
+    "addChecklistItem": "Add checklist item"
+  },
+  "practice": {
+    "title": "Applied Protocol Simulations",
+    "subtitle": "Branching real-world scenarios designed with measurable learning objectives and competency rubrics",
+    "minutes": "min",
+    "level1": "Level 1 · Foundational",
+    "level2": "Level 2 · Intermediate",
+    "level3": "Level 3 · Advanced",
+    "startBtn": "Start Simulation",
+    "demoTag": "Demo Scenario",
+    "progress": "Scenario Progress",
+    "freeTextLabel": "Write your proposed response or action (2–4 concise sentences):",
+    "submitStep": "Confirm Decision & Continue",
+    "nextNode": "Continue to Next Stage",
+    "finishReport": "View Competency Report",
+    "reportTitle": "Competency Performance Report",
+    "disclaimer": "This assessment measures decisions inside the simulation and does not replace real-world field evaluation.",
+    "strengthsTitle": "Demonstrated Strengths",
+    "gapsTitle": "Targeted Growth Areas",
+    "whyCorrectTitle": "Protocol Rationale & Rule Citations",
+    "progressOverTime": "Longitudinal Competency Trend",
+    "competencies": {
+      "C1": "C1 · Reception & Departure",
+      "C2": "C2 · Precedence & Seating",
+      "C3": "C3 · Hospitality & Dining",
+      "C4": "C4 · Cross-Cultural Communication",
+      "C5": "C5 · Official Correspondence",
+      "C6": "C6 · Contingency Handling",
+      "C7": "C7 · Visit Planning & Coordination"
+    }
+  },
+  "check": {
+    "title": "Check My Plan",
+    "subtitle": "Paste a draft visit itinerary or event rundown to identify protocol risks, gaps, and practical improvements without altering your original text.",
+    "planLabel": "Itinerary or Plan Text",
+    "planPlaceholder": "Example: 10:00 Official delegation arrives at gate, 10:05 immediate MoU signing without courtesy pause, followed by presenting a personal gift to the visiting minister in front of press…",
+    "contextLabel": "Optional context (guest country, institution type, rank)",
+    "submitBtn": "Review My Plan",
+    "severities": {
+      "critical": "Critical",
+      "important": "Important",
+      "improvement": "Improvement"
+    },
+    "whyLabel": "Why it matters:",
+    "suggestionLabel": "Actionable suggestion:"
+  },
+  "experts": {
+    "title": "WIJAHA Specialists & Advisory Services",
+    "subtitle": "Human protocol scholarship and smart-learning architecture when high-stakes occasions require personal review.",
+    "viewProfile": "View Profile & Services",
+    "requestService": "Request Service",
+    "requestQuote": "Request Custom Quote",
+    "forWhom": "Designed for:",
+    "deliverables": "Concrete deliverables:",
+    "turnaround": "Typical turnaround:",
+    "requestFormTitle": "Request Advisory or Training Engagement",
+    "nameLabel": "Full Name",
+    "emailLabel": "Work Email",
+    "notesLabel": "Occasion scope or training requirements",
+    "shareContextCheck": "Attach current project summary to accelerate review (optional)",
+    "submitRequest": "Submit Request",
+    "fixedPayNotice": "Fixed-fee engagement — confirmed immediately in sandbox mode.",
+    "requestSuccess": "Your request has been logged under reference:"
+  },
+  "pricing": {
+    "title": "Plans & Transparent Pricing",
+    "subtitle": "Explicit numeric limits with zero dark patterns. Specialist advisory services are always engaged separately.",
+    "monthly": "Monthly",
+    "annual": "Annual (2 months free)",
+    "perMonth": "KWD / month",
+    "perYear": "KWD / year",
+    "quote": "Custom Quote",
+    "currentPlan": "Current Plan",
+    "choosePlan": "Select Plan",
+    "excludedLabel": "Not included:",
+    "faqTitle": "Billing, Cancellation & Data Ownership",
+    "faqs": [
+      { "q": "How do I cancel my subscription?", "a": "Cancel in two clicks from your Account page with zero mandatory calls or surveys; access continues until the end of your billing period." },
+      { "q": "What happens if I reach my monthly limit?", "a": "We never interrupt an in-progress result. You will see a calm notice with your reset date and an optional one-step upgrade." },
+      { "q": "What happens to my projects and data if I cancel or delete my account?", "a": "Export your full data archive as JSON or PDF/DOCX anytime. Account deletion requests include a 14-day recovery window before permanent purge." }
+    ]
+  },
+  "account": {
+    "title": "Account, Subscription & Privacy",
+    "language": "Interface Language",
+    "theme": "Visual Appearance",
+    "themes": { "light": "Light (Ivory)", "dark": "Dark (Midnight Navy)", "system": "System" },
+    "expertToggle": "Show contextual specialist review suggestions on sensitive occasions",
+    "usageTitle": "Current Monthly Allowance",
+    "cancelSub": "Cancel Subscription Renewal",
+    "invoicesTitle": "Invoices & Receipts",
+    "exportData": "Export My Data (JSON)",
+    "deleteAccount": "Schedule Account Deletion (14-day grace)",
+    "deleteConfirm": "Confirm Scheduled Deletion"
+  },
+  "org": {
+    "title": "Organization & Team Workspace",
+    "seatsUsed": "Seats utilized",
+    "inviteTitle": "Invite Team Member by Email",
+    "inviteBtn": "Send Invitation",
+    "membersTitle": "Workspace Members & Roles"
+  },
+  "auth": {
+    "dialogTitle": "Sign In to WIJAHA",
+    "dialogSubtitle": "Save editable projects, export official documents, and collaborate across your team.",
+    "googleBtn": "Continue with Google",
+    "magicEmailLabel": "Or sign in with an email magic code",
+    "magicSendBtn": "Send Sign-in Code",
+    "magicVerifyBtn": "Verify & Sign In",
+    "demoTitle": "Instant Seed Accounts (Development & Staging Preview)",
+    "close": "Close"
+  },
+  "admin": {
+    "title": "Governance & Administration Console",
+    "tabs": {
+      "overview": "Overview",
+      "content": "Knowledge Rules",
+      "review": "Review Queue",
+      "scenarios": "Scenarios",
+      "requests": "Service CRM",
+      "evals": "Quality Evals",
+      "analytics": "Metrics & Revenue Split"
+    }
+  },
+  "notFound": {
+    "title": "This page could not be found",
+    "subtitle": "Describe your occasion directly below and we will prepare what you need."
+  }
+}
