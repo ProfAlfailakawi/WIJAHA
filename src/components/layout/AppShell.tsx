@@ -237,17 +237,8 @@ export function AppShell({
     setTheme(resolvedDark ? 'light' : 'dark');
   };
 
-  const navItems = minimalHome
-    ? state.authenticated
-      ? [{ to: '/projects', label: t.nav.myProjects }]
-      : []
-    : [
-        ...(state.authenticated ? [{ to: '/projects', label: t.nav.myProjects }] : []),
-        { to: '/practice', label: t.nav.practice },
-        { to: '/check', label: t.nav.checkPlan },
-        { to: '/experts', label: t.nav.experts },
-        { to: '/pricing', label: t.nav.pricing },
-      ];
+  // Spec §7: the header carries no menu. Other destinations live in the footer and inside results.
+  const navItems = state.authenticated ? [{ to: '/projects', label: t.nav.myProjects }] : [];
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)]">
@@ -257,7 +248,7 @@ export function AppShell({
 
       <OfflineBanner />
 
-      <header className="no-print border-b border-[var(--line)]/80 bg-[var(--bg)]/95 backdrop-blur-xs sticky top-0 z-30">
+      <header className="wj-header no-print sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           {/* Brand Logo -> Always Home */}
           <Link
@@ -266,7 +257,7 @@ export function AppShell({
           >
             <WijahaEmblem className="w-7 h-7" />
             <div className="flex items-baseline gap-2 whitespace-nowrap">
-              <span className="text-lg font-bold tracking-tight">
+              <span className="wj-display text-2xl leading-none">
                 {locale === 'ar' ? BRAND.nameAr : BRAND.nameEn}
               </span>
               <span className="hidden sm:inline text-xs font-medium text-[var(--ink-3)] tracking-widest uppercase">

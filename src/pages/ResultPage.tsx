@@ -434,23 +434,23 @@ export function ResultPage() {
         {result && (
           <>
             {/* 1. Context Header + Editable Chips + Editable Assumption */}
-            <header className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <DemoContentNotice text={t.result.demoRuleBadge} compact />
-                {refining && (
-                  <span className="text-xs text-[var(--gold-ink)] font-medium">
-                    {t.result.streaming.generating}
-                  </span>
-                )}
+            <header className="wj-masthead wj-rise px-6 sm:px-10 pt-9 pb-8 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-[0.72rem] tracking-[0.35em] text-[var(--gold)] uppercase">
+                  {locale === 'ar' ? 'ملف المناسبة' : 'Occasion dossier'}
+                </span>
+                <span className="inline-flex items-center gap-2 text-xs text-[color:var(--primary-fg)]/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)]" aria-hidden="true" />
+                  {refining ? t.result.streaming.generating : t.result.demoRuleBadge}
+                </span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)] leading-snug">
+              <h1 className="text-3xl sm:text-[2.6rem] leading-[1.3] text-[var(--primary-fg)]">
                 {result.title}
               </h1>
 
-              {/* Context Chips (Clickable to Edit & Regenerate) */}
               {result.context.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   {result.context.map((chip) => (
                     <button
                       key={chip.key}
@@ -460,15 +460,18 @@ export function ResultPage() {
                         setEditingChipKey(chip.key);
                         setEditingChipVal(chip.label);
                       }}
-                      className="min-h-[36px] px-3 py-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] hover:bg-[var(--surface-2)] text-xs text-[var(--ink-2)] inline-flex items-center gap-1.5 cursor-pointer"
+                      title={chip.editable ? t.result.editChipPrompt : undefined}
+                      className="min-h-[36px] px-3.5 rounded-full border border-[var(--gold)]/45 text-[color:var(--primary-fg)] hover:bg-white/5 text-sm inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
-                      <SlidersHorizontal className="w-3 h-3 text-[var(--gold-ink)]" aria-hidden="true" />
                       <span>{chip.label}</span>
+                      {chip.editable && <SlidersHorizontal className="w-3 h-3 text-[var(--gold)]" aria-hidden="true" />}
                     </button>
                   ))}
                 </div>
               )}
+            </header>
 
+            <div className="space-y-4">
               {editingChipKey && (
                 <form
                   onSubmit={(e) => {
@@ -525,7 +528,7 @@ export function ResultPage() {
                   )}
                 </div>
               ))}
-            </header>
+            </div>
 
             {/* High-Sensitivity Mandatory Notice */}
             {result.trust.sensitivity === 'high' && (
@@ -575,18 +578,16 @@ export function ResultPage() {
             )}
 
             {/* 3. Direct 3-Point Executive Summary */}
-            <section className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/65 p-5 sm:p-6 space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--gold-ink)]">
-                {t.result.summaryTitle}
-              </h2>
-              <ul className="space-y-2.5">
+            <section className="wj-invitation wj-rise p-6 sm:p-8" style={{ animationDelay: '80ms' }}>
+              <h2 className="text-xl text-[var(--ink)] mb-5">{t.result.summaryTitle}</h2>
+              <ol className="space-y-4">
                 {result.summary.map((line, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5 text-[15px] text-[var(--ink)]">
-                    <span className="text-[var(--gold-ink)] font-bold tabular-nums">•</span>
-                    <span className="leading-relaxed">{line}</span>
+                  <li key={idx} className="flex items-start gap-4">
+                    <span className="wj-seal mt-0.5"><span className="tabular-nums">{idx + 1}</span></span>
+                    <span className="text-[1.02rem] leading-relaxed text-[var(--ink)]">{line}</span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             </section>
 
             {/* 4. Transformative Result Blocks */}
@@ -715,7 +716,7 @@ export function ResultPage() {
 
               <div className="pt-3 border-t border-[var(--line)] flex flex-wrap items-center justify-between gap-3 text-xs">
                 <span className="text-[var(--ink-2)]">{t.result.trust.helpfulPrompt}</span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -774,7 +775,7 @@ export function ResultPage() {
                 value={followupText}
                 onChange={(e) => setFollowupText(e.target.value)}
                 placeholder={t.result.followupPlaceholder}
-                className="flex-1 min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 text-sm text-[var(--ink)]"
+                className="flex-1 min-w-0 min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 text-sm text-[var(--ink)]"
               />
               <Button type="submit" variant="secondary" loading={refining}>
                 <span>{t.result.followupSend}</span>
