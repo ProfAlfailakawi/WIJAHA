@@ -1,3 +1,4 @@
+import { normalizeArabic } from '../../shared/arabic.ts';
 import type { IntentType } from '../../shared/types.ts';
 
 /**
@@ -9,8 +10,8 @@ import type { IntentType } from '../../shared/types.ts';
 
 // Whole-word match with optional Arabic clitic prefixes (ال، و، ب، ل، ك، ف).
 const tok = (...words: string[]): RegExp =>
-  new RegExp(`(?<![\\p{L}\\p{N}])(?:وال|بال|فال|كال|لل|ال|و|ب|ل|ك|ف)?(?:${words.join('|')})(?![\\p{L}\\p{N}])`, 'u');
-const sub = (...parts: string[]): RegExp => new RegExp(parts.join('|'), 'u');
+  new RegExp(`(?<![\\p{L}\\p{N}])(?:وال|بال|فال|كال|لل|ال|و|ب|ل|ك|ف)?(?:${words.map(normalizeArabic).join('|')})(?![\\p{L}\\p{N}])`, 'u');
+const sub = (...parts: string[]): RegExp => new RegExp(parts.map(normalizeArabic).join('|'), 'u');
 
 type Rule = [RegExp, number];
 
@@ -44,8 +45,8 @@ const LEXICON: Partial<Record<IntentType, Rule[]>> = {
   ],
   seating_precedence: [
     [sub('وين مكان', 'اين مكان', 'مكان المترجم', 'interpreter', 'seat a', 'seat the'), 4],
-    [sub('ترتيب الجلوس', 'نرتب الجلوس', 'الجلوس علي', 'ترتيب المقاعد', 'ترتيب الكراسي', 'توزيع المقاعد', 'نوزع المقاعد', 'يمين الضيف', 'قعده الطاوله', 'وين يقعد', 'من يجلس', 'يجلس علي', 'مقاعد', 'الكراسي', 'الاسبقي', 'اسبقي'), 4],
-    [sub('seating', 'precedence', 'who sits', 'head of the table', 'interpreter sit', 'seat the', 'seat guests'), 4],
+    [sub('ترتيب الجلوس', 'نرتب الجلوس', 'الجلوس علي', 'ترتيب المقاعد', 'ترتيب الكراسي', 'توزيع المقاعد', 'نوزع المقاعد', 'يمين الضيف', 'قعده الطاوله', 'وين يقعد', 'من يجلس', 'يجلس علي', 'مقاعد', 'الكراسي', 'الاسبقي', 'اسبقي'), 6],
+    [sub('seating', 'precedence', 'who sits', 'head of the table', 'interpreter sit', 'seat the', 'seat guests'), 6],
     [sub('المنصه', 'منصه'), 1],
   ],
   business_trip_abroad: [
@@ -73,7 +74,7 @@ const LEXICON: Partial<Record<IntentType, Rule[]>> = {
     [sub('ضيوف', 'ضيف', 'نستقبل'), 2],
   ],
   delegation_visit_host: [
-    [/(?:وزير|معالي|سفير|رئيس دوله|minister|ambassador|head of state)[\s\S]{0,30}(?:جاي|جايي|يزور|يوصل|يحضر|قادم|visiting|arriving|coming|visit)/u, 5],
+    [/(?:وزير|معالي|سفير|رييس دوله|minister|ambassador|head of state)[\s\S]{0,30}(?:جاي|جايي|يزور|يوصل|يحضر|قادم|visiting|arriving|coming|visit)/u, 5],
     [sub('reception programme', 'reception program', 'hosting a minister', 'hosting the head of state', 'hosting an ambassador', 'hosting a delegation', 'are coming', 'coming next week', 'professors are', 'to sign an agreement'), 5],
     [sub('خطه استقبال', 'برنامج استقبال', 'برنامج زياره', 'جدول الاستقبال', 'مذكره تفاهم', 'وفد اكاديمي', 'وفد جامعي', 'يزورنا', 'بيزورنا', 'ننتظر وفد', 'زياره وفد', 'يزور المؤسسه', 'يزور الوزاره'), 4],
     [sub('reception plan', 'welcome program', 'visiting delegation', 'delegation is visiting', 'host them', 'academic delegation', 'sign an mou', 'visiting government', 'visiting officials', 'delegation from'), 4],
@@ -82,7 +83,7 @@ const LEXICON: Partial<Record<IntentType, Rule[]>> = {
   dining_etiquette: [
     [sub('عشاء رسمي', 'المنديل', 'منديل', 'الشوكه', 'السكين', 'ملعقه', 'الشوربه', 'اكل', 'ناكل', 'اتناول', 'تناول الطعام', 'وليمه', 'ادوات المائده'), 3],
     [sub('table manners', 'formal dinner', 'formal meal', 'flatware', 'napkin', 'bread plate', 'wine glass', 'fork', 'knife', 'soup', 'formal corporate dinner', 'formal business dinner', 'seven course'), 3],
-    [sub('عشاء', 'غداء', 'مائده', 'dinner', 'lunch'), 1],
+    [sub('عشاء', 'غداء', 'مائده', 'dinner', 'lunch'), 2],
   ],
   etiquette_personal: [
     [sub('كروت شغل', 'كرت شغل', 'كروت عمل', 'بطاقات عمل', 'business cards'), 6],
@@ -122,6 +123,8 @@ export function classifyIntent(norm: string): { intent: IntentType; score: numbe
       bestScore = score;
     }
   }
+  // A single weak hint (score 1, e.g. just the word "schedule") is not enough to leave the general etiquette intent.
+  if (bestScore < 2) return { intent: 'etiquette_personal', score: bestScore };
   return { intent: best, score: bestScore };
 }
 
@@ -147,3 +150,10 @@ export function stripNegatedMentions(norm: string): string {
     ' ',
   );
 }
+
+/** Royalty and heads of government: always high sensitivity (expert review recommended). */
+export const ROYAL_HIGH_RE = tok(
+  'صاحب السمو', 'سمو', 'صاحب الجلاله', 'جلاله الملك', 'جلاله', 'ولي العهد', 'خادم الحرمين', 'الديوان الاميري', 'الديوان الملكي',
+  'الامير', 'امير', 'ملك', 'سلطان', 'رئيس الوزراء', 'رئيس الجمهوريه', 'فخامه', 'دوله الرئيس', 'رئيس مجلس الوزراء',
+  'crown prince', 'king', 'sultan', 'emir', 'amir', 'prime minister', 'royal court', 'amiri diwan', 'royal highness', 'his highness', 'his majesty',
+);

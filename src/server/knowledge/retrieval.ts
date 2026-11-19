@@ -34,7 +34,7 @@ const INTENT_TOPIC_MAP: Record<IntentType, string[]> = {
   dining_etiquette: ['dining', 'etiquette', 'religion_food'],
   dress_code: ['dress', 'etiquette'],
   hosting_hospitality: ['hospitality', 'dining', 'seating', 'religion_food', 'greeting'],
-  delegation_visit_host: ['visit_program', 'greeting', 'seating', 'titles', 'correspondence'],
+  delegation_visit_host: ['visit_program', 'greeting', 'seating', 'titles', 'correspondence', 'hospitality'],
   business_trip_abroad: ['visit_program', 'time', 'communication', 'gifts', 'greeting'],
   formal_invitation: ['correspondence', 'titles', 'dress'],
   seating_precedence: ['seating', 'titles'],
@@ -115,6 +115,8 @@ export function scoreRulesPure(
     if (params.countryIso) {
       if (rule.countries.includes(params.countryIso)) {
         score += 5.0;
+        // Rules written for a handful of countries are more specific than region-wide ones.
+        if (rule.countries.length <= 6 && !rule.countries.includes('GLOBAL')) score += 3.5;
       } else if (rule.countries.includes('GLOBAL')) {
         score += 1.5;
       } else {
@@ -122,6 +124,9 @@ export function scoreRulesPure(
       }
     } else if (rule.countries.includes('GLOBAL')) {
       score += 1.0;
+    } else {
+      // No country in the query: country-specific packs (e.g. Gulf/Arab drafts) must not crowd out general rules.
+      score -= 4.0;
     }
 
     for (const t of expectedTopics) {

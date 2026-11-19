@@ -19,7 +19,8 @@ import {
 } from '../../shared/types.ts';
 import type { RetrievedRule } from '../knowledge/retrieval.ts';
 import { callGeminiJson, getAiProviderStatus } from './provider.ts';
-import { classifyIntent, OUT_OF_SCOPE_RE, stripNegatedMentions, UNSAFE_RE } from './intent-lexicon.ts';
+import { detectCountry } from './countries.ts';
+import { classifyIntent, OUT_OF_SCOPE_RE, ROYAL_HIGH_RE, stripNegatedMentions, UNSAFE_RE } from './intent-lexicon.ts';
 
 export interface ExtractedEntities {
   intent: IntentType;
@@ -34,32 +35,6 @@ export interface ExtractedEntities {
   requestedDraftLang?: string;
   missingCritical?: 'guest_count' | 'country' | 'rank_level';
 }
-
-const COUNTRY_PATTERNS: Array<{
-  iso: string;
-  ar: string;
-  en: string;
-  tokens: string[];
-}> = [
-  { iso: 'CN', ar: 'الصين', en: 'China', tokens: ['صين', 'صيني', 'بكين', 'china', 'chinese', 'beijing'] },
-  { iso: 'PL', ar: 'بولندا', en: 'Poland', tokens: ['بولندا', 'بولندي', 'بولنديه', 'وارسو', 'poland', 'polish', 'warsaw'] },
-  { iso: 'JP', ar: 'اليابان', en: 'Japan', tokens: ['يابان', 'ياباني', 'طوكيو', 'japan', 'japanese', 'tokyo'] },
-  { iso: 'GB', ar: 'المملكة المتحدة', en: 'United Kingdom', tokens: ['بريطانيا', 'لندن', 'انجلترا', 'uk', 'london', 'british'] },
-  { iso: 'DE', ar: 'ألمانيا', en: 'Germany', tokens: ['المانيا', 'الماني', 'برلين', 'germany', 'german', 'berlin'] },
-  { iso: 'FR', ar: 'فرنسا', en: 'France', tokens: ['فرنسا', 'فرنسي', 'باريس', 'france', 'french', 'paris'] },
-  { iso: 'US', ar: 'الولايات المتحدة', en: 'United States', tokens: ['امريكا', 'واشنطن', 'usa', 'american', 'washington'] },
-  { iso: 'EU', ar: 'أوروبا', en: 'Europe', tokens: ['اوروب', 'europe', 'european'] },
-  { iso: 'TR', ar: 'تركيا', en: 'Türkiye', tokens: ['تركيا', 'تركي', 'انقره', 'turkey', 'turkish', 'türkiye'] },
-  { iso: 'IN', ar: 'الهند', en: 'India', tokens: ['الهند', 'هندي', 'دلهي', 'india', 'indian', 'delhi'] },
-  { iso: 'KR', ar: 'كوريا', en: 'Korea', tokens: ['كوريا', 'كوري', 'سيول', 'korea', 'korean', 'seoul'] },
-  { iso: 'BR', ar: 'البرازيل', en: 'Brazil', tokens: ['البرازيل', 'برازيلي', 'brazil', 'brazilian'] },
-  { iso: 'IT', ar: 'إيطاليا', en: 'Italy', tokens: ['ايطاليا', 'ايطالي', 'روما', 'italy', 'italian', 'rome'] },
-  { iso: 'ES', ar: 'إسبانيا', en: 'Spain', tokens: ['اسبانيا', 'اسباني', 'مدريد', 'spain', 'spanish', 'madrid'] },
-  { iso: 'MY', ar: 'ماليزيا', en: 'Malaysia', tokens: ['ماليزيا', 'ماليزي', 'malaysia', 'malaysian'] },
-  { iso: 'RU', ar: 'روسيا', en: 'Russia', tokens: ['روسيا', 'روسي', 'موسكو', 'russia', 'russian', 'moscow'] },
-  { iso: 'KW', ar: 'الكويت', en: 'Kuwait', tokens: ['كويت', 'الكويت', 'kuwait', 'kuwaiti'] },
-  { iso: 'SA', ar: 'السعودية', en: 'Saudi Arabia', tokens: ['سعوديه', 'الرياض', 'saudi', 'riyadh'] },
-];
 
 export const ALLOWED_BLOCKS_BY_INTENT: Record<
   IntentType,
@@ -121,18 +96,11 @@ export function analyzeIntentAndContextPure(rawQuery: string): ExtractedEntities
     return { intent: 'unsafe', sensitivity: 'low' };
   }
 
-  // Country detection
-  let countryIso: string | undefined;
-  let countryLabelAr: string | undefined;
-  let countryLabelEn: string | undefined;
-  for (const c of COUNTRY_PATTERNS) {
-    if (c.tokens.some((t) => norm.includes(normalizeArabic(t)) || lower.includes(t))) {
-      countryIso = c.iso;
-      countryLabelAr = c.ar;
-      countryLabelEn = c.en;
-      break;
-    }
-  }
+  // Country detection (earliest mention wins; Arab world + Gulf supported)
+  const detected = detectCountry(norm);
+  const countryIso = detected?.iso;
+  const countryLabelAr = detected?.ar;
+  const countryLabelEn = detected?.en;
 
   // Guest count extraction
   const numMatch = rawQuery.match(/\b([2-9]|[1-9][0-9])\b/);
@@ -154,9 +122,9 @@ export function analyzeIntentAndContextPure(rawQuery: string): ExtractedEntities
     'head of state',
     'cabinet',
   ];
-  const isHigh = highMarkers.some(
-    (m) => norm.includes(normalizeArabic(m)) || lower.includes(m),
-  );
+  const isHigh =
+    highMarkers.some((m) => norm.includes(normalizeArabic(m)) || lower.includes(m)) ||
+    ROYAL_HIGH_RE.test(norm);
 
   // Requested draft language detection
   let requestedDraftLang: string | undefined;

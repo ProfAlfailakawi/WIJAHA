@@ -1,6 +1,8 @@
 import { BRAND } from '../config/brand.ts';
 import { computeDeterministicEmbedding, normalizeArabic } from '../shared/arabic.ts';
 import type { ScenarioNode, ScenarioRubric } from '../shared/types.ts';
+import { ARAB_COMMON_RULES } from './seed-arab-common.ts';
+import { ARAB_COUNTRY_RULES } from './seed-arab-countries.ts';
 
 export interface SeedRuleDef {
   id: string;
@@ -72,9 +74,63 @@ export const SEED_SOURCES = [
     reliability: 'secondary',
     isDemo: true,
   },
+  {
+    id: 'S-ARAB-001',
+    title: 'مسودة مرجع — الضيافة والعادات الاجتماعية والتحية في الخليج والعالم العربي (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
+  {
+    id: 'S-ARAB-002',
+    title: 'مسودة مرجع — الألقاب والمراسلات الرسمية في الدول العربية (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
+  {
+    id: 'S-ARAB-003',
+    title: 'مسودة مرجع — المجلس والجلوس والأسبقية في الدول العربية (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
+  {
+    id: 'S-ARAB-004',
+    title: 'مسودة مرجع — الهدايا في السياقات العربية والرسمية (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
+  {
+    id: 'S-ARAB-005',
+    title: 'مسودة مرجع — التقويم والصلاة ورمضان وأيام العمل في الدول العربية (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
+  {
+    id: 'S-ARAB-006',
+    title: 'مسودة مرجع — ملخصات قُطرية للخليج والدول العربية (تجميع ممارسات معروفة، يتطلب توثيقاً من مصدر رسمي)',
+    publisher: 'مسودة داخلية — وجاهة (غير معتمدة)',
+    type: 'internal',
+    accessedAt: '2026-11-20',
+    reliability: 'secondary',
+    isDemo: true,
+  },
 ];
 
-const RAW_RULES: SeedRuleDef[] = [
+const BASE_RULES: SeedRuleDef[] = [
   // 1-6: Personal & Dining Etiquette
   {
     id: 'R-DEMO-0001',
@@ -710,6 +766,8 @@ const RAW_RULES: SeedRuleDef[] = [
   },
 ];
 
+const RAW_RULES: SeedRuleDef[] = [...BASE_RULES, ...ARAB_COMMON_RULES, ...ARAB_COUNTRY_RULES];
+
 export const SEED_KNOWLEDGE_RULES = RAW_RULES.map((r) => {
   const combinedAr = `${r.titleAr} ${r.bodyAr} ${r.topics.join(' ')} ${r.countries.join(' ')}`;
   const combinedEn = `${r.titleEn} ${r.bodyEn} ${r.topics.join(' ')} ${r.countries.join(' ')}`;
@@ -727,7 +785,7 @@ export const SEED_KNOWLEDGE_RULES = RAW_RULES.map((r) => {
     sources: [{ sourceId: r.sourceId, locator: 'مسودة تجريبية' }],
     exceptions: r.exceptions ?? 'تُراجع تعليمات الجهة المضيفة أولاً في جميع الأحوال.',
     status: 'draft_demo' as const,
-    authorUid: 'demo:yousef',
+    authorUid: r.id.startsWith('R-ARAB') ? 'ai:claude-draft' : 'demo:yousef',
     reviewedBy: undefined,
     reviewedAt: undefined,
     reviewDueAt: '2027-05-01',
