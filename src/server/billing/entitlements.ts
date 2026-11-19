@@ -1,13 +1,15 @@
 import crypto from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import {
+  billingCheckoutSessions,
   invoices,
   orgs,
   payments,
   planEntitlements,
   revenueLedger,
   revenueSplitRules,
+  serviceRequests,
   subscriptions,
   usageCounters,
   webhookEvents,
@@ -145,8 +147,59 @@ export async function incrementMonthlyUsage(
 }
 
 /**
- * Idempotent Billing Webhook Processor (Section 17.4 & Phase 5 Acceptance Criteria).
- * Sending the exact same eventId twice returns `{ duplicate: true }` and never double-bills or duplicates subscriptions.
+ * Atomic monthly quota reservation (Requirement C8).
+ * Prevents race conditions where parallel requests bypass monthly plan limits.
+ */
+export async function reserveMonthlyQuota(
+  bucketId: string,
+  metricKey: 'results_generated' | 'exports_created' | 'checks_run',
+  limit: number,
+): Promise<{ allowed: boolean; usedCount: number }> {
+  if (limit <= 0) {
+    return { allowed: false, usedCount: 0 };
+  }
+  const period = currentPeriodKey();
+  const res = await db.execute(sql`
+    INSERT INTO usage_counters (org_id, period_key, metric_key, used_count, updated_at)
+    VALUES (${bucketId}, ${period}, ${metricKey}, 1, NOW())
+    ON CONFLICT (org_id, period_key, metric_key)
+    DO UPDATE SET
+      used_count = usage_counters.used_count + 1,
+      updated_at = NOW()
+    WHERE usage_counters.used_count < ${limit}
+    RETURNING used_count
+  `);
+
+  if (res.rows.length === 0) {
+    const cur = await getMonthlyUsage(bucketId, metricKey);
+    return { allowed: false, usedCount: cur };
+  }
+
+  const usedCount = Number((res.rows[0] as { used_count?: number | string })?.used_count ?? 1);
+  return { allowed: true, usedCount };
+}
+
+export async function refundMonthlyQuota(
+  bucketId: string,
+  metricKey: 'results_generated' | 'exports_created' | 'checks_run',
+): Promise<void> {
+  try {
+    const period = currentPeriodKey();
+    await db.execute(sql`
+      UPDATE usage_counters
+      SET used_count = GREATEST(0, used_count - 1), updated_at = NOW()
+      WHERE org_id = ${bucketId} AND period_key = ${period} AND metric_key = ${metricKey}
+    `);
+  } catch (error) {
+    console.error('refundMonthlyQuota failed:', error);
+  }
+}
+
+/**
+ * Atomic & Idempotent Billing Webhook Processor (A3).
+ * Executes inside a single PostgreSQL transaction so webhook_events, payments,
+ * invoices, orgs/subscriptions (or service_requests/revenue_ledger), and
+ * billing_checkout_sessions succeed or roll back together.
  */
 export async function processBillingWebhook(input: {
   eventId: string;
@@ -157,119 +210,148 @@ export async function processBillingWebhook(input: {
   targetId: string;
   billingCycle?: 'monthly' | 'annual';
   amountKwd: number;
+  serviceRequestId?: string | null;
   serviceOwner?: 'yousef' | 'ahmad' | 'joint';
+  checkoutSessionId?: string | null;
 }): Promise<{ duplicate: boolean; paymentId?: string }> {
   try {
-    const existing = await db
-      .select()
-      .from(webhookEvents)
-      .where(eq(webhookEvents.eventId, input.eventId))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return { duplicate: true };
-    }
-
-    await db.insert(webhookEvents).values({
-      eventId: input.eventId,
-      provider: input.provider,
-      eventType: input.eventType,
-      payload: input as unknown as Record<string, unknown>,
-    });
-
-    const paymentId = `pay_${crypto.randomUUID().slice(0, 12)}`;
-    await db.insert(payments).values({
-      id: paymentId,
-      orgId: input.orgId,
-      userUid: input.userUid,
-      kind: input.eventType === 'subscription.activated' ? 'subscription' : 'service',
-      targetId: input.targetId,
-      amountKwd: input.amountKwd,
-      currency: 'KWD',
-      status: 'succeeded',
-      provider: input.provider,
-      providerTxId: `tx_${input.eventId}`,
-    });
-
-    const invNum = `INV-${new Date().getUTCFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
-    await db.insert(invoices).values({
-      id: `inv_${crypto.randomUUID().slice(0, 10)}`,
-      invoiceNumber: invNum,
-      orgId: input.orgId,
-      userUid: input.userUid,
-      paymentId,
-      amountKwd: input.amountKwd,
-      descriptionAr:
-        input.eventType === 'subscription.activated'
-          ? `اشتراك باقة وجاهة (${input.targetId})`
-          : `خدمة خبير (${input.targetId})`,
-      descriptionEn:
-        input.eventType === 'subscription.activated'
-          ? `WIJAHA Plan Subscription (${input.targetId})`
-          : `WIJAHA Specialist Engagement (${input.targetId})`,
-    });
-
-    if (input.eventType === 'subscription.activated') {
-      await db
-        .update(orgs)
-        .set({ planId: input.targetId, updatedAt: new Date() })
-        .where(eq(orgs.id, input.orgId));
-
-      const periodDays = input.billingCycle === 'annual' ? 365 : 30;
-      const periodEnd = new Date(Date.now() + periodDays * 24 * 3600 * 1000);
-      const subId = `sub_${input.orgId}`;
-
-      await db
-        .insert(subscriptions)
+    return await db.transaction(async (tx) => {
+      const insertedEvents = await tx
+        .insert(webhookEvents)
         .values({
-          id: subId,
-          orgId: input.orgId,
-          userUid: input.userUid,
-          planId: input.targetId,
-          billingCycle: input.billingCycle ?? 'monthly',
-          status: 'active',
-          currentPeriodEnd: periodEnd,
-          cancelAtPeriodEnd: false,
-          providerRef: input.eventId,
+          eventId: input.eventId,
+          provider: input.provider,
+          eventType: input.eventType,
+          payload: {
+            eventId: input.eventId,
+            provider: input.provider,
+            eventType: input.eventType,
+            orgId: input.orgId,
+            targetId: input.targetId,
+            amountKwd: input.amountKwd,
+            checkoutSessionId: input.checkoutSessionId ?? null,
+            serviceRequestId: input.serviceRequestId ?? null,
+          },
         })
-        .onConflictDoUpdate({
-          target: subscriptions.id,
-          set: {
+        .onConflictDoNothing({ target: webhookEvents.eventId })
+        .returning({ id: webhookEvents.id });
+
+      if (insertedEvents.length === 0) {
+        return { duplicate: true };
+      }
+
+      const paymentId = `pay_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      await tx.insert(payments).values({
+        id: paymentId,
+        orgId: input.orgId,
+        userUid: input.userUid,
+        kind: input.eventType === 'subscription.activated' ? 'subscription' : 'service',
+        targetId: input.targetId,
+        amountKwd: input.amountKwd,
+        currency: 'KWD',
+        status: 'succeeded',
+        provider: input.provider,
+        providerTxId: `tx_${input.eventId}`,
+      });
+
+      const invNum = `INV-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+      await tx.insert(invoices).values({
+        id: `inv_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
+        invoiceNumber: invNum,
+        orgId: input.orgId,
+        userUid: input.userUid,
+        paymentId,
+        amountKwd: input.amountKwd,
+        descriptionAr:
+          input.eventType === 'subscription.activated'
+            ? `اشتراك باقة وجاهة (${input.targetId})`
+            : `خدمة خبير (${input.targetId})`,
+        descriptionEn:
+          input.eventType === 'subscription.activated'
+            ? `WIJAHA Plan Subscription (${input.targetId})`
+            : `WIJAHA Specialist Engagement (${input.targetId})`,
+      });
+
+      if (input.eventType === 'subscription.activated') {
+        await tx
+          .update(orgs)
+          .set({ planId: input.targetId, updatedAt: new Date() })
+          .where(eq(orgs.id, input.orgId));
+
+        const periodDays = input.billingCycle === 'annual' ? 365 : 30;
+        const periodEnd = new Date(Date.now() + periodDays * 24 * 3600 * 1000);
+        const subId = `sub_${input.orgId}`;
+
+        await tx
+          .insert(subscriptions)
+          .values({
+            id: subId,
+            orgId: input.orgId,
+            userUid: input.userUid,
             planId: input.targetId,
             billingCycle: input.billingCycle ?? 'monthly',
             status: 'active',
             currentPeriodEnd: periodEnd,
             cancelAtPeriodEnd: false,
-            updatedAt: new Date(),
-          },
+            providerRef: input.eventId,
+          })
+          .onConflictDoUpdate({
+            target: subscriptions.id,
+            set: {
+              planId: input.targetId,
+              billingCycle: input.billingCycle ?? 'monthly',
+              status: 'active',
+              currentPeriodEnd: periodEnd,
+              cancelAtPeriodEnd: false,
+              updatedAt: new Date(),
+            },
+          });
+      } else if (input.eventType === 'service.paid') {
+        if (input.serviceRequestId) {
+          await tx
+            .update(serviceRequests)
+            .set({
+              paid: true,
+              status: 'in_progress',
+              updatedAt: new Date(),
+            })
+            .where(eq(serviceRequests.id, input.serviceRequestId));
+        }
+
+        const owner = input.serviceOwner ?? 'yousef';
+        const splitRows = await tx
+          .select()
+          .from(revenueSplitRules)
+          .where(eq(revenueSplitRules.ownerType, owner))
+          .limit(1);
+
+        const splitSnapshot = splitRows[0]
+          ? {
+              platformSharePct: splitRows[0].platformSharePct,
+              yousefSharePct: splitRows[0].yousefSharePct,
+              ahmadSharePct: splitRows[0].ahmadSharePct,
+            }
+          : { platformSharePct: null, yousefSharePct: null, ahmadSharePct: null };
+
+        await tx.insert(revenueLedger).values({
+          id: `led_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
+          paymentId,
+          serviceId: input.targetId,
+          serviceOwner: owner,
+          grossAmountKwd: input.amountKwd,
+          splitSnapshot,
         });
-    } else if (input.eventType === 'service.paid') {
-      const owner = input.serviceOwner ?? 'yousef';
-      const splitRows = await db
-        .select()
-        .from(revenueSplitRules)
-        .where(eq(revenueSplitRules.ownerType, owner))
-        .limit(1);
+      }
 
-      const splitSnapshot = splitRows[0]
-        ? {
-            platformSharePct: splitRows[0].platformSharePct,
-            yousefSharePct: splitRows[0].yousefSharePct,
-            ahmadSharePct: splitRows[0].ahmadSharePct,
-          }
-        : { platformSharePct: null, yousefSharePct: null, ahmadSharePct: null };
+      if (input.checkoutSessionId) {
+        await tx
+          .update(billingCheckoutSessions)
+          .set({ status: 'completed' })
+          .where(eq(billingCheckoutSessions.id, input.checkoutSessionId));
+      }
 
-      await db.insert(revenueLedger).values({
-        id: `led_${crypto.randomUUID().slice(0, 10)}`,
-        paymentId,
-        serviceId: input.targetId,
-        serviceOwner: owner,
-        grossAmountKwd: input.amountKwd,
-        splitSnapshot,
-      });
-    }
-
-    return { duplicate: false, paymentId };
+      return { duplicate: false, paymentId };
+    });
   } catch (error) {
     console.error('processBillingWebhook failed:', error);
     throw new Error('Failed to process billing event.', { cause: error });

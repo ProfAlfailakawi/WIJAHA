@@ -743,7 +743,7 @@ export async function executeWijahaPipeline(params: {
   onStage?: (stage: 'understanding' | 'retrieving' | 'generating') => void;
 }): Promise<WijahaResult> {
   const { locale, retrievedRules, entities } = params;
-  const resultId = `res_${crypto.randomUUID().slice(0, 12)}`;
+  const resultId = `res_${crypto.randomUUID()}`;
 
   // Out-of-scope polite response
   if (entities.intent === 'out_of_scope' || entities.intent === 'unsafe') {
@@ -1566,7 +1566,7 @@ export function auditVisitPlanPure(
   });
 
   return {
-    id: `chk_${crypto.randomUUID().slice(0, 10)}`,
+    id: `chk_${crypto.randomUUID()}`,
     locale,
     summary:
       locale === 'ar'

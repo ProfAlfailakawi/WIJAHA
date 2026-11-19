@@ -56,6 +56,13 @@ interface AdminOverviewPayload {
     reviewDueAt: string;
     reviewedBy?: string | null;
   }>;
+  experts?: Array<{
+    id: string;
+    nameAr: string;
+    nameEn: string;
+    avatarUrl: string;
+    roleTag: string;
+  }>;
   serviceRequests: Array<{
     id: string;
     requesterName: string;
@@ -112,6 +119,10 @@ export function AdminPage() {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [data, setData] = useState<AdminOverviewPayload | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -134,13 +145,19 @@ export function AdminPage() {
   const loadOverview = useCallback(async () => {
     setLoading(true);
     setForbidden(false);
+    setMfaRequired(false);
     try {
       const res = await fetch('/api/admin/overview', {
         credentials: 'include',
         headers: getBearerHeaders(),
       });
       if (res.status === 403 || res.status === 401) {
-        setForbidden(true);
+        const errBody = (await res.json().catch(() => ({}))) as { error?: { code?: string } };
+        if (errBody?.error?.code === 'MFA_REQUIRED') {
+          setMfaRequired(true);
+        } else {
+          setForbidden(true);
+        }
         return;
       }
       if (res.ok) {
@@ -150,6 +167,45 @@ export function AdminPage() {
       setLoading(false);
     }
   }, [getBearerHeaders]);
+
+  const handleSetupMfa = async () => {
+    setMfaLoading(true);
+    try {
+      const res = await fetch('/api/auth/mfa/setup', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getBearerHeaders(),
+      });
+      if (res.ok) {
+        const out = (await res.json()) as { secret: string };
+        setMfaSecret(out.secret);
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleVerifyMfa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaCode.trim()) return;
+    setMfaLoading(true);
+    try {
+      const res = await fetch('/api/auth/mfa/verify', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
+        body: JSON.stringify({ code: mfaCode.trim() }),
+      });
+      if (res.ok) {
+        setMfaCode('');
+        await loadOverview();
+      } else {
+        setToast(t.errors.invalidMagicCode);
+      }
+    } finally {
+      setMfaLoading(false);
+    }
+  };
 
   useEffect(() => {
     void loadOverview();
@@ -228,6 +284,25 @@ export function AdminPage() {
     }
   };
 
+  const handleSaveExpertAvatar = async (expertId: string, avatarUrl: string) => {
+    const res = await fetch(`/api/admin/experts/${encodeURIComponent(expertId)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
+      body: JSON.stringify({ avatarUrl }),
+    });
+    if (res.ok) {
+      await loadOverview();
+      setToast(
+        locale === 'ar'
+          ? 'تم تحديث الصورة الرسمية المعتمدة للخبير.'
+          : 'Updated verified specialist portrait URL.',
+      );
+    } else {
+      setToast(t.errors.badRequest);
+    }
+  };
+
   const handleRunEvals = async () => {
     setRunningEvals(true);
     try {
@@ -274,14 +349,36 @@ export function AdminPage() {
     }
   };
 
-  const tabItems: Array<{ id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-    { id: 'overview', label: t.admin.tabs.overview, icon: ShieldCheck },
-    { id: 'content', label: t.admin.tabs.content, icon: BookOpen },
-    { id: 'review', label: t.admin.tabs.review, icon: ClipboardList },
-    { id: 'requests', label: t.admin.tabs.requests, icon: Inbox },
-    { id: 'evals', label: t.admin.tabs.evals, icon: FlaskConical },
-    { id: 'analytics', label: t.admin.tabs.analytics, icon: BarChart3 },
+  const role = state.actor?.platformRole || 'user';
+  const allTabItems: Array<{
+    id: AdminTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    visible: boolean;
+  }> = [
+    { id: 'overview', label: t.admin.tabs.overview, icon: ShieldCheck, visible: true },
+    { id: 'content', label: t.admin.tabs.content, icon: BookOpen, visible: true },
+    { id: 'review', label: t.admin.tabs.review, icon: ClipboardList, visible: true },
+    {
+      id: 'requests',
+      label: t.admin.tabs.requests,
+      icon: Inbox,
+      visible: role === 'platform_admin' || role === 'senior_reviewer' || role === 'expert',
+    },
+    {
+      id: 'evals',
+      label: t.admin.tabs.evals,
+      icon: FlaskConical,
+      visible: role === 'platform_admin' || role === 'senior_reviewer',
+    },
+    {
+      id: 'analytics',
+      label: t.admin.tabs.analytics,
+      icon: BarChart3,
+      visible: role === 'platform_admin',
+    },
   ];
+  const tabItems = allTabItems.filter((item) => item.visible);
 
   return (
     <AppShell>
@@ -297,7 +394,42 @@ export function AdminPage() {
           </div>
         </header>
 
-        {forbidden ? (
+        {mfaRequired ? (
+          <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 max-w-lg mx-auto space-y-4">
+            <h2 className="text-base font-bold text-[var(--ink)]">{t.errors.mfaRequired}</h2>
+            {!mfaSecret ? (
+              <Button variant="primary" loading={mfaLoading} onClick={() => void handleSetupMfa()}>
+                {locale === 'ar' ? 'إعداد مفتاح التحقق الثنائي (TOTP)' : 'Initialize TOTP Authenticator'}
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--ink-2)]">
+                  {locale === 'ar'
+                    ? 'أضف هذا المفتاح السري في تطبيق المصادقة ثم أدخل الرمز المكون من 6 أرقام:'
+                    : 'Add this Base32 key to your authenticator app, then enter the 6-digit code:'}
+                </p>
+                <p className="text-xs font-mono font-bold text-[var(--gold-ink)] bg-[var(--bg)] p-2.5 rounded border border-[var(--line)]" dir="ltr">
+                  {mfaSecret}
+                </p>
+              </div>
+            )}
+            <form onSubmit={(e) => void handleVerifyMfa(e)} className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                dir="ltr"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                placeholder="123456"
+                className="flex-1 min-h-[42px] rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3.5 text-sm font-mono text-[var(--ink)]"
+              />
+              <Button type="submit" variant="primary" loading={mfaLoading}>
+                {t.auth.magicVerifyBtn}
+              </Button>
+            </form>
+          </section>
+        ) : forbidden ? (
           <EmptyState
             icon={<ShieldAlert className="w-5 h-5" />}
             title={
@@ -306,9 +438,13 @@ export function AdminPage() {
                 : 'Restricted to Governance & Protocol Reviewers'
             }
             description={
-              locale === 'ar'
-                ? 'سجّل الدخول بحساب admin@wijaha.demo أو yousef@wijaha.demo لمعاينة لوحة الحوكمة.'
-                : 'Sign in as admin@wijaha.demo or yousef@wijaha.demo to inspect the governance console.'
+              state.demoLoginEnabled
+                ? locale === 'ar'
+                  ? 'سجّل الدخول بحساب admin@wijaha.demo أو yousef@wijaha.demo لمعاينة لوحة الحوكمة.'
+                  : 'Sign in as admin@wijaha.demo or yousef@wijaha.demo to inspect the governance console.'
+                : locale === 'ar'
+                  ? 'يتطلب الوصول حساب حوكمة مخوّل ومحقَّق الهوية.'
+                  : 'Requires an authorized, verified governance account.'
             }
             action={
               <Button variant="primary" onClick={() => openSignInModal(() => void loadOverview())}>
@@ -507,22 +643,46 @@ export function AdminPage() {
                       <p className="text-sm font-semibold text-[var(--ink)]">{r.titleAr}</p>
                       <p className="text-xs text-[var(--ink-2)]">{r.bodyAr}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => void handleRuleStatus(r.id, 'approved')}
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{locale === 'ar' ? 'اعتماد' : 'Approve'}</span>
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => void handleRuleStatus(r.id, 'in_review')}
-                      >
-                        <span>in_review</span>
-                      </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(r.status === 'draft' ||
+                        r.status === 'draft_demo' ||
+                        r.status === 'deprecated') && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void handleRuleStatus(r.id, 'in_review')}
+                        >
+                          <span>{locale === 'ar' ? 'إرسال للمراجعة' : 'Submit for Review'}</span>
+                        </Button>
+                      )}
+                      {r.status === 'in_review' && (
+                        <>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => void handleRuleStatus(r.id, 'approved')}
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{locale === 'ar' ? 'اعتماد' : 'Approve'}</span>
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => void handleRuleStatus(r.id, 'draft')}
+                          >
+                            <span>{locale === 'ar' ? 'إعادة لمسودة' : 'Return to Draft'}</span>
+                          </Button>
+                        </>
+                      )}
+                      {r.status === 'approved' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => void handleRuleStatus(r.id, 'deprecated')}
+                        >
+                          <span>{locale === 'ar' ? 'إيقاف (Deprecate)' : 'Deprecate'}</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -565,6 +725,24 @@ export function AdminPage() {
                       </select>
                     </div>
                   ))
+                )}
+
+                {data.experts && data.experts.length > 0 && (
+                  <div className="pt-4 border-t border-[var(--line)] space-y-3">
+                    <h3 className="text-sm font-bold text-[var(--ink)]">
+                      {locale === 'ar'
+                        ? 'الصور الرسمية المعتمدة للخبراء (تُعرض الأحرف الأولى ما لم يُضف رابط رسمي)'
+                        : 'Official Specialist Portraits (Monogram shown until verified URL is set)'}
+                    </h3>
+                    {data.experts.map((ex) => (
+                      <ExpertAvatarRowEditor
+                        key={ex.id}
+                        expert={ex}
+                        locale={locale}
+                        onSave={handleSaveExpertAvatar}
+                      />
+                    ))}
+                  </div>
                 )}
               </section>
             )}
@@ -668,6 +846,36 @@ function KpiCard({ label, value, sub }: { label: string; value: number; sub: str
       <p className="text-xs text-[var(--ink-2)]">{label}</p>
       <p className="text-2xl font-bold text-[var(--ink)] tabular-nums">{value}</p>
       <p className="text-[11px] font-mono text-[var(--gold-ink)]">{sub}</p>
+    </div>
+  );
+}
+
+function ExpertAvatarRowEditor({
+  expert,
+  locale,
+  onSave,
+}: {
+  expert: NonNullable<AdminOverviewPayload['experts']>[number];
+  locale: 'ar' | 'en';
+  onSave: (id: string, avatarUrl: string) => Promise<void>;
+}) {
+  const [url, setUrl] = useState(expert.avatarUrl || '');
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+      <span className="text-xs font-semibold text-[var(--ink)] min-w-[160px]">
+        {locale === 'ar' ? expert.nameAr : expert.nameEn}
+      </span>
+      <input
+        type="url"
+        dir="ltr"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="https://... (official portrait URL)"
+        className="flex-1 min-h-[38px] rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 text-xs text-[var(--ink)]"
+      />
+      <Button variant="secondary" size="sm" onClick={() => void onSave(expert.id, url)}>
+        {locale === 'ar' ? 'حفظ الصورة' : 'Save URL'}
+      </Button>
     </div>
   );
 }

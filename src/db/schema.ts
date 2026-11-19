@@ -1,12 +1,15 @@
 import { relations } from 'drizzle-orm';
 import {
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
   serial,
   text,
   timestamp,
+  uniqueIndex,
+  vector,
 } from 'drizzle-orm/pg-core';
 
 // ---------------------------------------------------------------------------
@@ -23,6 +26,8 @@ export const users = pgTable('users', {
   platformRole: text('platform_role').notNull().default('user'),
   expertSuggestionsEnabled: boolean('expert_suggestions_enabled').notNull().default(true),
   mfaVerified: boolean('mfa_verified').notNull().default(false),
+  mfaEnabled: boolean('mfa_enabled').notNull().default(false),
+  mfaSecretEncrypted: text('mfa_secret_encrypted'),
   deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -72,6 +77,7 @@ export const authSessions = pgTable('auth_sessions', {
     .notNull()
     .references(() => users.uid, { onDelete: 'cascade' }),
   activeOrgId: text('active_org_id').notNull(),
+  mfaVerified: boolean('mfa_verified').notNull().default(false),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -82,7 +88,26 @@ export const magicLinks = pgTable('magic_links', {
   codeHash: text('code_hash').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   consumedAt: timestamp('consumed_at'),
+  invalidatedAt: timestamp('invalidated_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const magicAttempts = pgTable(
+  'magic_attempts',
+  {
+    id: serial('id').primaryKey(),
+    email: text('email').notNull(),
+    ipHash: text('ip_hash').notNull(),
+    succeeded: boolean('succeeded').notNull().default(false),
+    attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
+  },
+  (table) => [index('magic_attempts_email_time_idx').on(table.email, table.attemptedAt)],
+);
+
+export const rateLimitBuckets = pgTable('rate_limit_buckets', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(1),
+  resetAt: timestamp('reset_at').notNull(),
 });
 
 // ---------------------------------------------------------------------------
@@ -102,37 +127,48 @@ export const sources = pgTable('sources', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const knowledgeRules = pgTable('knowledge_rules', {
-  id: text('id').primaryKey(),
-  titleAr: text('title_ar').notNull(),
-  titleEn: text('title_en').notNull(),
-  bodyAr: text('body_ar').notNull(),
-  bodyEn: text('body_en').notNull(),
-  level: text('level').notNull().default('customary'),
-  topics: jsonb('topics').$type<string[]>().notNull().default([]),
-  countries: jsonb('countries').$type<string[]>().notNull().default(['GLOBAL']),
-  contexts: jsonb('contexts').$type<string[]>().notNull().default(['business']),
-  sensitivity: text('sensitivity').notNull().default('low'),
-  sources: jsonb('sources')
-    .$type<Array<{ sourceId: string; locator?: string }>>()
-    .notNull()
-    .default([]),
-  exceptions: text('exceptions'),
-  status: text('status').notNull().default('draft_demo'),
-  authorUid: text('author_uid').notNull(),
-  reviewedBy: text('reviewed_by'),
-  reviewedAt: text('reviewed_at'),
-  reviewNote: text('review_note'),
-  validFrom: text('valid_from'),
-  reviewDueAt: text('review_due_at').notNull(),
-  version: integer('version').notNull().default(1),
-  supersedes: text('supersedes'),
-  embeddingAr: jsonb('embedding_ar').$type<number[]>().notNull().default([]),
-  embeddingEn: jsonb('embedding_en').$type<number[]>().notNull().default([]),
-  normalizedSearchText: text('normalized_search_text').notNull().default(''),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+export const knowledgeRules = pgTable(
+  'knowledge_rules',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id'),
+    titleAr: text('title_ar').notNull(),
+    titleEn: text('title_en').notNull(),
+    bodyAr: text('body_ar').notNull(),
+    bodyEn: text('body_en').notNull(),
+    level: text('level').notNull().default('customary'),
+    topics: jsonb('topics').$type<string[]>().notNull().default([]),
+    countries: jsonb('countries').$type<string[]>().notNull().default(['GLOBAL']),
+    contexts: jsonb('contexts').$type<string[]>().notNull().default(['business']),
+    sensitivity: text('sensitivity').notNull().default('low'),
+    sources: jsonb('sources')
+      .$type<Array<{ sourceId: string; locator?: string }>>()
+      .notNull()
+      .default([]),
+    exceptions: text('exceptions'),
+    status: text('status').notNull().default('draft_demo'),
+    authorUid: text('author_uid').notNull(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: text('reviewed_at'),
+    reviewNote: text('review_note'),
+    validFrom: text('valid_from'),
+    reviewDueAt: text('review_due_at').notNull(),
+    version: integer('version').notNull().default(1),
+    supersedes: text('supersedes'),
+    embeddingAr: jsonb('embedding_ar').$type<number[]>().notNull().default([]),
+    embeddingEn: jsonb('embedding_en').$type<number[]>().notNull().default([]),
+    embeddingVec: vector('embedding_vec', { dimensions: 768 }),
+    normalizedSearchText: text('normalized_search_text').notNull().default(''),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('knowledge_rules_embedding_hnsw_idx').using(
+      'hnsw',
+      table.embeddingVec.op('vector_cosine_ops'),
+    ),
+  ],
+);
 
 export const knowledgeRuleVersions = pgTable('knowledge_rule_versions', {
   id: serial('id').primaryKey(),
@@ -189,6 +225,7 @@ export const results = pgTable('results', {
     .notNull()
     .references(() => queries.id, { onDelete: 'cascade' }),
   userUid: text('user_uid'),
+  anonId: text('anon_id'),
   orgId: text('org_id'),
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
   ruleIds: jsonb('rule_ids').$type<string[]>().notNull().default([]),
@@ -240,6 +277,7 @@ export const shares = pgTable('shares', {
   token: text('token').notNull().unique(),
   createdByUid: text('created_by_uid').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
+  revokedAt: timestamp('revoked_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -262,6 +300,8 @@ export const feedback = pgTable('feedback', {
   reportedError: boolean('reported_error').notNull().default(false),
   ruleIds: jsonb('rule_ids').$type<string[]>().notNull().default([]),
   reviewStatus: text('review_status').notNull().default('open'),
+  resolvedByUid: text('resolved_by_uid'),
+  resolvedAt: timestamp('resolved_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -456,13 +496,40 @@ export const subscriptions = pgTable('subscriptions', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export const usageCounters = pgTable('usage_counters', {
-  id: serial('id').primaryKey(),
+export const usageCounters = pgTable(
+  'usage_counters',
+  {
+    id: serial('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    periodKey: text('period_key').notNull(),
+    metricKey: text('metric_key').notNull(),
+    usedCount: integer('used_count').notNull().default(0),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('usage_counters_org_period_metric_idx').on(
+      table.orgId,
+      table.periodKey,
+      table.metricKey,
+    ),
+  ],
+);
+
+export const billingCheckoutSessions = pgTable('billing_checkout_sessions', {
+  id: text('id').primaryKey(),
+  provider: text('provider').notNull(),
+  providerSessionId: text('provider_session_id').notNull().unique(),
   orgId: text('org_id').notNull(),
-  periodKey: text('period_key').notNull(),
-  metricKey: text('metric_key').notNull(),
-  usedCount: integer('used_count').notNull().default(0),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  userUid: text('user_uid').notNull(),
+  kind: text('kind').notNull(),
+  targetId: text('target_id').notNull(),
+  billingCycle: text('billing_cycle'),
+  amountKwd: integer('amount_kwd').notNull(),
+  serviceRequestId: text('service_request_id'),
+  serviceOwner: text('service_owner'),
+  status: text('status').notNull().default('pending'),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const payments = pgTable('payments', {
@@ -539,6 +606,7 @@ export const auditLogs = pgTable('audit_logs', {
 
 export const evalCases = pgTable('eval_cases', {
   id: text('id').primaryKey(),
+  dataset: text('dataset').notNull().default('dev'),
   queryText: text('query_text').notNull(),
   locale: text('locale').notNull().default('ar'),
   dialect: text('dialect').notNull().default('msa'),
@@ -548,6 +616,9 @@ export const evalCases = pgTable('eval_cases', {
   expectedRuleIds: jsonb('expected_rule_ids').$type<string[]>().notNull().default([]),
   mandatoryKeywords: jsonb('mandatory_keywords').$type<string[]>().notNull().default([]),
   forbiddenKeywords: jsonb('forbidden_keywords').$type<string[]>().notNull().default([]),
+  author: text('author').notNull().default('system_demo'),
+  reviewedBy: text('reviewed_by'),
+  status: text('status').notNull().default('approved'),
   isDemo: boolean('is_demo').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -562,6 +633,35 @@ export const evalRuns = pgTable('eval_runs', {
   highSensitivityPassPct: integer('high_sensitivity_pass_pct').notNull(),
   hallucinatedRulesCount: integer('hallucinated_rules_count').notNull(),
   summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const aiCalls = pgTable(
+  'ai_calls',
+  {
+    id: text('id').primaryKey(),
+    stage: text('stage').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    latencyMs: integer('latency_ms').notNull().default(0),
+    estimatedCostKwd: text('estimated_cost_kwd').notNull().default('0'),
+    usedFallback: boolean('used_fallback').notNull().default(false),
+    orgId: text('org_id'),
+    userUid: text('user_uid'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('ai_calls_created_at_idx').on(table.createdAt)],
+);
+
+export const resultCache = pgTable('result_cache', {
+  cacheKey: text('cache_key').primaryKey(),
+  locale: text('locale').notNull(),
+  kbVersion: text('kb_version').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  ruleIds: jsonb('rule_ids').$type<string[]>().notNull().default([]),
+  expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

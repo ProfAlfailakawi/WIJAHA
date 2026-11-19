@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import * as dotenv from 'dotenv';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.ts';
@@ -11,6 +11,7 @@ import {
   analyticsEvents,
   auditLogs,
   authSessions,
+  billingCheckoutSessions,
   competencyScores,
   evalCases,
   evalRuns,
@@ -22,6 +23,7 @@ import {
   invoices,
   knowledgeRules,
   knowledgeRuleVersions,
+  magicAttempts,
   magicLinks,
   memberships,
   orgs,
@@ -42,7 +44,6 @@ import {
   subscriptions,
   users,
 } from './src/db/schema.ts';
-import { ensureSeeded } from './src/db/seed.ts';
 import {
   analyzeIntentAndContextPure,
   applyNaturalProjectUpdatePure,
@@ -51,11 +52,35 @@ import {
 } from './src/server/ai/pipeline.ts';
 import { getAiProviderStatus } from './src/server/ai/provider.ts';
 import {
+  canAccessResultRecord,
+  canAccessSimulationRun,
+  readVerifiedAnonId,
+  resolveOrCreateAnonId,
+} from './src/server/auth/anon.ts';
+import {
   can,
+  decryptField,
   encryptField,
   hashIp,
   hashToken,
+  resolveExpertOwnerTag,
 } from './src/server/auth/rbac.ts';
+import {
+  buildOtpAuthUri,
+  generateTotpSecret,
+  verifyTotpCode,
+} from './src/server/auth/totp.ts';
+import { loadAndValidateEnv } from './src/server/config/env.ts';
+import { createEmailProvider } from './src/server/email/provider.ts';
+import {
+  canTransitionRuleStatus,
+  RuleStatusSchema,
+} from './src/server/knowledge/lifecycle.ts';
+import { checkSharedRateLimit } from './src/server/security/rate-limit.ts';
+import {
+  applySecurityHeadersMiddleware,
+  injectNonceIntoHtml,
+} from './src/server/security/headers.ts';
 import {
   attachActorMiddleware,
   createSessionCookie,
@@ -67,10 +92,12 @@ import {
 import {
   getMonthlyUsage,
   getOrgEntitlements,
-  incrementMonthlyUsage,
   nextMonthResetLabel,
   processBillingWebhook,
+  refundMonthlyQuota,
+  reserveMonthlyQuota,
 } from './src/server/billing/entitlements.ts';
+import { createBillingProvider } from './src/server/billing/provider.ts';
 import {
   generateProjectDocx,
   generateProjectPdfOrHtml,
@@ -104,20 +131,6 @@ dotenv.config();
 
 const PORT = 3000;
 
-// Simple sliding-window rate limiter per IP hash
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-function checkRateLimit(key: string, maxPerMin: number): boolean {
-  const now = Date.now();
-  const cur = rateBuckets.get(key);
-  if (!cur || cur.resetAt < now) {
-    rateBuckets.set(key, { count: 1, resetAt: now + 60_000 });
-    return true;
-  }
-  if (cur.count >= maxPerMin) return false;
-  cur.count += 1;
-  return true;
-}
-
 function sendApiError(res: Response, status: number, code: string, messageKey: string, extra?: Record<string, unknown>) {
   res.status(status).json({
     error: {
@@ -136,6 +149,7 @@ async function logAudit(
   targetId: string,
   orgId?: string | null,
   req?: Request,
+  meta: Record<string, unknown> = {},
 ) {
   try {
     await db.insert(auditLogs).values({
@@ -145,6 +159,7 @@ async function logAudit(
       targetId,
       orgId: orgId ?? null,
       ipHash: hashIp(req?.ip),
+      meta,
     });
   } catch (err) {
     console.warn('Audit log write warning:', err);
@@ -172,33 +187,94 @@ async function logAnalytics(
 }
 
 export async function buildExpressApp() {
+  const appEnv = loadAndValidateEnv();
+  const emailProvider = createEmailProvider(appEnv);
+  const billingProvider = createBillingProvider(appEnv);
   const app = express();
+  app.set('trust proxy', 1);
+
+  // Signed Billing Webhook MUST read raw bytes BEFORE express.json() (A3)
+  app.post(
+    '/api/billing/webhook',
+    express.raw({ type: 'application/json', limit: '512kb' }),
+    async (req: Request, res: Response) => {
+      try {
+        const rawBody = Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(typeof req.body === 'string' ? req.body : '', 'utf8');
+
+        if (rawBody.length === 0 || !billingProvider.verifyWebhook(rawBody, req.headers)) {
+          sendApiError(res, 400, 'INVALID_WEBHOOK_SIGNATURE', 'errors.badRequest');
+          return;
+        }
+
+        const verified = billingProvider.parseEvent(rawBody);
+        if (verified.eventType === 'ignored') {
+          res.json({ ok: true, ignored: true });
+          return;
+        }
+
+        const conditions = [];
+        if (verified.checkoutSessionId) {
+          conditions.push(eq(billingCheckoutSessions.id, verified.checkoutSessionId));
+        }
+        if (verified.providerSessionId) {
+          conditions.push(eq(billingCheckoutSessions.providerSessionId, verified.providerSessionId));
+        }
+        if (conditions.length === 0) {
+          sendApiError(res, 400, 'MISSING_CHECKOUT_REFERENCE', 'errors.badRequest');
+          return;
+        }
+
+        const sessionRows = await db
+          .select()
+          .from(billingCheckoutSessions)
+          .where(conditions.length === 1 ? conditions[0] : or(...conditions))
+          .limit(1);
+
+        if (sessionRows.length === 0) {
+          sendApiError(res, 400, 'UNKNOWN_CHECKOUT_SESSION', 'errors.badRequest');
+          return;
+        }
+
+        const checkoutRow = sessionRows[0];
+        const out = await processBillingWebhook({
+          eventId: verified.eventId,
+          provider: billingProvider.name,
+          eventType:
+            checkoutRow.kind === 'service' ? 'service.paid' : 'subscription.activated',
+          orgId: checkoutRow.orgId,
+          userUid: checkoutRow.userUid,
+          targetId: checkoutRow.targetId,
+          billingCycle: checkoutRow.billingCycle === 'annual' ? 'annual' : 'monthly',
+          amountKwd: checkoutRow.amountKwd,
+          serviceRequestId: checkoutRow.serviceRequestId,
+          serviceOwner: (checkoutRow.serviceOwner as 'yousef' | 'ahmad' | 'joint' | null) ?? undefined,
+          checkoutSessionId: checkoutRow.id,
+        });
+
+        await logAudit(
+          checkoutRow.userUid,
+          'billing.webhook_processed',
+          checkoutRow.kind,
+          checkoutRow.targetId,
+          checkoutRow.orgId,
+          req,
+        );
+
+        res.json(out);
+      } catch (error) {
+        console.error('POST /api/billing/webhook failed:', error);
+        sendApiError(res, 400, 'WEBHOOK_INVALID', 'errors.badRequest');
+      }
+    },
+  );
+
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
-  // Security Headers (Section 21.6)
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader(
-      'Permissions-Policy',
-      'geolocation=(), microphone=(), camera=(), payment=()',
-    );
-    if (process.env.NODE_ENV === 'production') {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    }
-    next();
-  });
-
-  // Ensure initial demo seed data exists on first API call
-  app.use('/api', async (_req, _res, next) => {
-    try {
-      await ensureSeeded();
-      next();
-    } catch (err) {
-      next(err);
-    }
-  });
+  // Security Headers & strict CSP with per-request nonce (Section 21.6 / C10)
+  app.use(applySecurityHeadersMiddleware(appEnv));
 
   app.use('/api', attachActorMiddleware);
 
@@ -206,11 +282,23 @@ export async function buildExpressApp() {
   // 1. Auth, Session, Account & Multi-Tenant Org Endpoints
   // -------------------------------------------------------------------------
 
+  app.get('/api/config', (_req, res) => {
+    res.json({
+      demoLoginEnabled: appEnv.demoLoginEnabled,
+      aiMode: getAiProviderStatus().mode,
+    });
+  });
+
   app.get('/api/auth/me', async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor;
       if (!actor) {
-        res.json({ authenticated: false, actor: null, aiMode: getAiProviderStatus().mode });
+        res.json({
+          authenticated: false,
+          actor: null,
+          aiMode: getAiProviderStatus().mode,
+          demoLoginEnabled: appEnv.demoLoginEnabled,
+        });
         return;
       }
 
@@ -243,6 +331,7 @@ export async function buildExpressApp() {
         },
         recentProjects: recentProjs.map((p) => ({ id: p.id, title: p.title })),
         aiMode: getAiProviderStatus().mode,
+        demoLoginEnabled: appEnv.demoLoginEnabled,
       });
     } catch (error) {
       console.error('/api/auth/me failed:', error);
@@ -270,33 +359,61 @@ export async function buildExpressApp() {
   app.post('/api/auth/magic-link', async (req, res) => {
     try {
       const email = String(req.body?.email || '').trim().toLowerCase();
-      if (!email || !email.includes('@')) {
-        sendApiError(res, 400, 'INVALID_EMAIL', 'experts.emailLabel');
-        return;
-      }
-      if (!checkRateLimit(`magic:${hashIp(req.ip)}`, 10)) {
-        sendApiError(res, 429, 'RATE_LIMIT', 'home.networkError');
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        sendApiError(res, 400, 'INVALID_EMAIL', 'errors.invalidEmail');
         return;
       }
 
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const id = `ml_${crypto.randomUUID().slice(0, 12)}`;
+      const ipHashVal = hashIp(req.ip);
+      const [ipAllowed, emailAllowed] = await Promise.all([
+        checkSharedRateLimit(`magic_req_ip:${ipHashVal}`, 10, 15 * 60_000),
+        checkSharedRateLimit(`magic_req_email:${hashToken(email)}`, 3, 15 * 60_000),
+      ]);
+
+      if (!ipAllowed || !emailAllowed) {
+        sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+        return;
+      }
+
+      // Invalidate all prior unused codes for this email before issuing a new one (A2)
+      const now = new Date();
+      await db
+        .update(magicLinks)
+        .set({ invalidatedAt: now })
+        .where(
+          and(
+            eq(magicLinks.email, email),
+            isNull(magicLinks.consumedAt),
+            isNull(magicLinks.invalidatedAt),
+          ),
+        );
+
+      const code = String(crypto.randomInt(100000, 1000000));
+      const id = `ml_${crypto.randomUUID()}`;
       await db.insert(magicLinks).values({
         id,
         email,
         codeHash: hashToken(code),
-        expiresAt: new Date(Date.now() + 15 * 60_000),
+        expiresAt: new Date(now.getTime() + 15 * 60_000),
       });
 
-      // Console email provider in dev/preview (Section 0.3)
-      console.info(`[WIJAHA Console Email] Magic sign-in code for ${email}: ${code}`);
-      res.json({
-        ok: true,
-        devPreviewCode: process.env.NODE_ENV !== 'production' ? code : code,
+      await emailProvider.sendMagicCodeEmail({
+        to: email,
+        code,
+        locale: req.body?.locale === 'en' ? 'en' : 'ar',
       });
-    } catch (error) {
-      console.error('/api/auth/magic-link failed:', error);
-      sendApiError(res, 500, 'MAGIC_ERROR', 'home.networkError');
+
+      const responseBody: Record<string, unknown> = {
+        ok: true,
+        message_key: 'errors.magicNeutralSent',
+        message: 'إذا كان البريد صحيحاً فسيصلك رمز',
+      };
+      if (appEnv.EMAIL_PROVIDER === 'console' && !appEnv.isProduction) {
+        responseBody.devPreviewCode = code;
+      }
+      res.json(responseBody);
+    } catch {
+      sendApiError(res, 500, 'MAGIC_ERROR', 'errors.internalError');
     }
   });
 
@@ -304,75 +421,140 @@ export async function buildExpressApp() {
     try {
       const email = String(req.body?.email || '').trim().toLowerCase();
       const code = String(req.body?.code || '').trim();
-      const rows = await db
+      const ipHashVal = hashIp(req.ip);
+
+      if (!email || !/^\d{6}$/.test(code)) {
+        sendApiError(res, 400, 'INVALID_CODE', 'errors.invalidMagicCode');
+        return;
+      }
+
+      const ipAllowed = await checkSharedRateLimit(`magic_verify_ip:${ipHashVal}`, 20, 15 * 60_000);
+      if (!ipAllowed) {
+        sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+        return;
+      }
+
+      const windowStart = new Date(Date.now() - 15 * 60_000);
+      const recentFailed = await db
+        .select()
+        .from(magicAttempts)
+        .where(
+          and(
+            eq(magicAttempts.email, email),
+            eq(magicAttempts.succeeded, false),
+            gt(magicAttempts.attemptedAt, windowStart),
+          ),
+        );
+
+      if (recentFailed.length >= 5) {
+        await db
+          .update(magicLinks)
+          .set({ invalidatedAt: new Date() })
+          .where(and(eq(magicLinks.email, email), isNull(magicLinks.consumedAt)));
+        sendApiError(res, 429, 'TOO_MANY_ATTEMPTS', 'errors.invalidMagicCode');
+        return;
+      }
+
+      const activeCodes = await db
         .select()
         .from(magicLinks)
         .where(
           and(
             eq(magicLinks.email, email),
-            eq(magicLinks.codeHash, hashToken(code)),
             gt(magicLinks.expiresAt, new Date()),
             isNull(magicLinks.consumedAt),
+            isNull(magicLinks.invalidatedAt),
           ),
         )
-        .limit(1);
+        .orderBy(desc(magicLinks.createdAt))
+        .limit(5);
 
-      if (rows.length === 0) {
-        sendApiError(res, 400, 'INVALID_CODE', 'auth.dialogTitle');
+      const candidateBuf = Buffer.from(hashToken(code), 'hex');
+      let matchedRow: (typeof activeCodes)[number] | null = null;
+      for (const row of activeCodes) {
+        const storedBuf = Buffer.from(row.codeHash, 'hex');
+        if (
+          storedBuf.length === candidateBuf.length &&
+          crypto.timingSafeEqual(storedBuf, candidateBuf)
+        ) {
+          matchedRow = row;
+        }
+      }
+
+      if (!matchedRow) {
+        await db.insert(magicAttempts).values({
+          email,
+          ipHash: ipHashVal,
+          succeeded: false,
+        });
+        if (recentFailed.length + 1 >= 5) {
+          await db
+            .update(magicLinks)
+            .set({ invalidatedAt: new Date() })
+            .where(and(eq(magicLinks.email, email), isNull(magicLinks.consumedAt)));
+        }
+        sendApiError(res, 400, 'INVALID_CODE', 'errors.invalidMagicCode');
         return;
       }
 
       await db
         .update(magicLinks)
         .set({ consumedAt: new Date() })
-        .where(eq(magicLinks.id, rows[0].id));
+        .where(eq(magicLinks.id, matchedRow.id));
+
+      await db.insert(magicAttempts).values({
+        email,
+        ipHash: ipHashVal,
+        succeeded: true,
+      });
 
       const uid = `magic:${hashToken(email).slice(0, 16)}`;
       const synced = await getOrCreateUserWithWorkspace(uid, email);
       await createSessionCookie(res, synced.user.uid, synced.activeOrgId);
       res.json({ ok: true });
-    } catch (error) {
-      console.error('/api/auth/magic-verify failed:', error);
-      sendApiError(res, 500, 'VERIFY_ERROR', 'home.networkError');
+    } catch {
+      sendApiError(res, 500, 'VERIFY_ERROR', 'errors.internalError');
     }
   });
 
-  app.post('/api/auth/demo-login', async (req, res) => {
-    try {
-      const email = String(req.body?.email || '').trim().toLowerCase();
-      const allowedDemoEmails = [
-        'admin@wijaha.demo',
-        'yousef@wijaha.demo',
-        'sara@org-alpha.demo',
-        'fahad@org-beta.demo',
-        'noura@individual.demo',
-      ];
-      if (!allowedDemoEmails.includes(email)) {
-        sendApiError(res, 403, 'NOT_DEMO_ACCOUNT', 'auth.dialogTitle');
-        return;
-      }
+  if (appEnv.demoLoginEnabled) {
+    app.post('/api/auth/demo-login', async (req, res) => {
+      try {
+        const email = String(req.body?.email || '').trim().toLowerCase();
+        const allowedDemoEmails = [
+          'admin@wijaha.demo',
+          'yousef@wijaha.demo',
+          'sara@org-alpha.demo',
+          'fahad@org-beta.demo',
+          'noura@individual.demo',
+        ];
+        if (!allowedDemoEmails.includes(email)) {
+          sendApiError(res, 403, 'NOT_DEMO_ACCOUNT', 'auth.dialogTitle');
+          return;
+        }
 
-      const userRows = await db.select().from(users).where(eq(users.email, email)).limit(1);
-      if (userRows.length === 0) {
-        sendApiError(res, 404, 'USER_NOT_FOUND', 'auth.dialogTitle');
-        return;
-      }
-      const u = userRows[0];
-      const memRows = await db
-        .select()
-        .from(memberships)
-        .where(eq(memberships.userUid, u.uid))
-        .limit(1);
+        const userRows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+        if (userRows.length === 0) {
+          sendApiError(res, 404, 'USER_NOT_FOUND', 'auth.dialogTitle');
+          return;
+        }
+        const u = userRows[0];
+        const memRows = await db
+          .select()
+          .from(memberships)
+          .where(eq(memberships.userUid, u.uid))
+          .limit(1);
 
-      const activeOrgId = memRows[0]?.orgId || `personal_${u.uid}`;
-      await createSessionCookie(res, u.uid, activeOrgId);
-      await logAudit(u.uid, 'auth.demo_login', 'user', u.uid, activeOrgId, req);
-      res.json({ ok: true });
-    } catch (error) {
-      console.error('/api/auth/demo-login failed:', error);
-      sendApiError(res, 500, 'DEMO_LOGIN_ERROR', 'home.networkError');
-    }
-  });
+        const activeOrgId = memRows[0]?.orgId || `personal_${u.uid}`;
+        await createSessionCookie(res, u.uid, activeOrgId);
+        await logAudit(u.uid, 'auth.demo_login', 'user', u.uid, activeOrgId, req);
+        res.json({ ok: true });
+      } catch (error) {
+        console.error('/api/auth/demo-login failed:', error);
+        sendApiError(res, 500, 'DEMO_LOGIN_ERROR', 'home.networkError');
+      }
+    });
+  }
 
   app.post('/api/auth/logout', async (req, res) => {
     try {
@@ -389,6 +571,87 @@ export async function buildExpressApp() {
       res.json({ ok: true });
     }
   });
+
+  app.post(
+    '/api/auth/mfa/setup',
+    requireAuthenticated,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const actor = req.actor!;
+        const secret = generateTotpSecret();
+        const encrypted = encryptField(secret);
+        await db
+          .update(users)
+          .set({
+            mfaSecretEncrypted: encrypted,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.uid, actor.uid));
+
+        const otpauthUri = buildOtpAuthUri({
+          secret,
+          accountEmail: actor.email,
+          issuer: 'WIJAHA',
+        });
+        await logAudit(actor.uid, 'auth.mfa_setup', 'user', actor.uid, actor.activeOrgId, req);
+        res.json({ ok: true, secret, otpauthUri });
+      } catch (error) {
+        console.error('POST /api/auth/mfa/setup failed:', error);
+        sendApiError(res, 500, 'MFA_SETUP_ERROR', 'errors.internalError');
+      }
+    },
+  );
+
+  app.post(
+    '/api/auth/mfa/verify',
+    requireAuthenticated,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const actor = req.actor!;
+        const code = String(req.body?.code || '').trim();
+        const userRows = await db
+          .select()
+          .from(users)
+          .where(eq(users.uid, actor.uid))
+          .limit(1);
+        const secretEncrypted = userRows[0]?.mfaSecretEncrypted;
+        if (!secretEncrypted) {
+          sendApiError(res, 400, 'MFA_NOT_INITIALIZED', 'errors.validationError');
+          return;
+        }
+        const secret = decryptField(secretEncrypted);
+        if (!secret || !verifyTotpCode(secret, code)) {
+          sendApiError(res, 400, 'INVALID_MFA_CODE', 'errors.invalidMagicCode');
+          return;
+        }
+
+        await db
+          .update(users)
+          .set({
+            mfaEnabled: true,
+            mfaVerified: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.uid, actor.uid));
+
+        const rawCookie = (req as Request & { cookies?: Record<string, string> }).cookies?.[
+          SESSION_COOKIE_NAME
+        ];
+        if (rawCookie) {
+          await db
+            .update(authSessions)
+            .set({ mfaVerified: true })
+            .where(eq(authSessions.id, hashToken(rawCookie)));
+        }
+
+        await logAudit(actor.uid, 'auth.mfa_verified', 'user', actor.uid, actor.activeOrgId, req);
+        res.json({ ok: true, mfaVerified: true });
+      } catch (error) {
+        console.error('POST /api/auth/mfa/verify failed:', error);
+        sendApiError(res, 500, 'MFA_VERIFY_ERROR', 'errors.internalError');
+      }
+    },
+  );
 
   app.patch('/api/account', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
@@ -466,6 +729,10 @@ export async function buildExpressApp() {
   app.get('/api/org', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
+      if (!can(actor, 'project:read', { orgId: actor.activeOrgId })) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
       const [orgRows, memRows, invRows, entitlements] = await Promise.all([
         db.select().from(orgs).where(eq(orgs.id, actor.activeOrgId)).limit(1),
         db
@@ -483,10 +750,12 @@ export async function buildExpressApp() {
         getOrgEntitlements(actor.activeOrgId),
       ]);
 
+      const safeInvitations = invRows.map(({ token: _omittedToken, ...rest }) => rest);
+
       res.json({
         org: orgRows[0] || null,
         members: memRows,
-        invitations: invRows,
+        invitations: safeInvitations,
         seatsLimit: entitlements.seats,
       });
     } catch (error) {
@@ -499,7 +768,7 @@ export async function buildExpressApp() {
     try {
       const actor = req.actor!;
       if (!can(actor, 'org:manage_members', { orgId: actor.activeOrgId })) {
-        sendApiError(res, 403, 'FORBIDDEN', 'org.title');
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
       const email = String(req.body?.email || '').trim().toLowerCase();
@@ -507,7 +776,7 @@ export async function buildExpressApp() {
         ? req.body.role
         : 'member';
       if (!email || !email.includes('@')) {
-        sendApiError(res, 400, 'INVALID_EMAIL', 'experts.emailLabel');
+        sendApiError(res, 400, 'INVALID_EMAIL', 'errors.invalidEmail');
         return;
       }
 
@@ -517,12 +786,13 @@ export async function buildExpressApp() {
         .from(memberships)
         .where(eq(memberships.orgId, actor.activeOrgId));
       if (currentMembers.length >= entitlements.seats) {
-        sendApiError(res, 403, 'SEAT_LIMIT_REACHED', 'pricing.title');
+        sendApiError(res, 403, 'SEAT_LIMIT_REACHED', 'errors.seatLimitReached');
         return;
       }
 
-      const invId = `inv_${crypto.randomUUID().slice(0, 10)}`;
+      const invId = `inv_${crypto.randomUUID()}`;
       const token = crypto.randomBytes(16).toString('hex');
+      const expiresAt = new Date(Date.now() + 7 * 24 * 3600_000);
       await db.insert(invitations).values({
         id: invId,
         orgId: actor.activeOrgId,
@@ -530,15 +800,215 @@ export async function buildExpressApp() {
         role,
         invitedByUid: actor.uid,
         token,
-        expiresAt: new Date(Date.now() + 7 * 24 * 3600_000),
+        expiresAt,
       });
-      await logAudit(actor.uid, 'org.invite_member', 'invitation', invId, actor.activeOrgId, req);
-      res.status(201).json({ ok: true, id: invId });
+      await logAudit(actor.uid, 'org.invite_member', 'invitation', invId, actor.activeOrgId, req, {
+        role,
+      });
+      const inviteUrl = `${appEnv.APP_URL.replace(/\/$/, '')}/invite/${token}`;
+      res.status(201).json({ ok: true, id: invId, token, inviteUrl, expiresAt: expiresAt.toISOString() });
     } catch (error) {
       console.error('POST /api/org/invitations failed:', error);
       sendApiError(res, 500, 'ORG_INVITE_ERROR', 'home.networkError');
     }
   });
+
+  app.get('/api/invitations/:token', async (req, res) => {
+    try {
+      const token = String(req.params.token || '').trim();
+      if (!token) {
+        sendApiError(res, 404, 'INVITATION_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const invRows = await db
+        .select()
+        .from(invitations)
+        .where(
+          and(
+            eq(invitations.token, token),
+            eq(invitations.status, 'pending'),
+            gt(invitations.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (invRows.length === 0) {
+        sendApiError(res, 404, 'INVITATION_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const inv = invRows[0];
+      const orgRows = await db.select().from(orgs).where(eq(orgs.id, inv.orgId)).limit(1);
+      res.json({
+        orgId: inv.orgId,
+        orgName: orgRows[0]?.name || inv.orgId,
+        emailHint: inv.email.replace(/^(..).*(@.*)$/, '$1***$2'),
+        role: inv.role,
+        expiresAt: inv.expiresAt,
+      });
+    } catch (error) {
+      console.error('GET /api/invitations/:token failed:', error);
+      sendApiError(res, 500, 'INVITATION_GET_ERROR', 'home.networkError');
+    }
+  });
+
+  app.post(
+    '/api/invitations/:token/accept',
+    requireAuthenticated,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const actor = req.actor!;
+        const token = String(req.params.token || '').trim();
+        const invRows = await db
+          .select()
+          .from(invitations)
+          .where(
+            and(
+              eq(invitations.token, token),
+              eq(invitations.status, 'pending'),
+              gt(invitations.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        if (invRows.length === 0) {
+          sendApiError(res, 404, 'INVITATION_INVALID', 'notFound.title');
+          return;
+        }
+        const inv = invRows[0];
+        if (actor.email.trim().toLowerCase() !== inv.email.trim().toLowerCase()) {
+          sendApiError(res, 403, 'INVITATION_EMAIL_MISMATCH', 'errors.forbidden');
+          return;
+        }
+
+        const [entitlements, existingMem, currentMembers] = await Promise.all([
+          getOrgEntitlements(inv.orgId),
+          db
+            .select()
+            .from(memberships)
+            .where(and(eq(memberships.userUid, actor.uid), eq(memberships.orgId, inv.orgId)))
+            .limit(1),
+          db.select().from(memberships).where(eq(memberships.orgId, inv.orgId)),
+        ]);
+
+        if (existingMem.length === 0 && currentMembers.length >= entitlements.seats) {
+          sendApiError(res, 403, 'SEAT_LIMIT_REACHED', 'errors.seatLimitReached');
+          return;
+        }
+
+        const updatedInv = await db
+          .update(invitations)
+          .set({ status: 'accepted' })
+          .where(and(eq(invitations.id, inv.id), eq(invitations.status, 'pending')))
+          .returning({ id: invitations.id });
+
+        if (updatedInv.length === 0) {
+          sendApiError(res, 404, 'INVITATION_ALREADY_USED', 'notFound.title');
+          return;
+        }
+
+        if (existingMem.length === 0) {
+          await db.insert(memberships).values({
+            userUid: actor.uid,
+            orgId: inv.orgId,
+            role: inv.role,
+          });
+        } else {
+          await db
+            .update(memberships)
+            .set({ role: inv.role })
+            .where(eq(memberships.id, existingMem[0].id));
+        }
+
+        await db
+          .update(authSessions)
+          .set({ activeOrgId: inv.orgId })
+          .where(eq(authSessions.userUid, actor.uid));
+
+        await logAudit(actor.uid, 'org.accept_invitation', 'invitation', inv.id, inv.orgId, req, {
+          role: inv.role,
+        });
+
+        res.json({ ok: true, orgId: inv.orgId, role: inv.role });
+      } catch (error) {
+        console.error('POST /api/invitations/:token/accept failed:', error);
+        sendApiError(res, 500, 'INVITATION_ACCEPT_ERROR', 'home.networkError');
+      }
+    },
+  );
+
+  app.delete(
+    '/api/org/members/:uid',
+    requireAuthenticated,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const actor = req.actor!;
+        if (!can(actor, 'org:manage_members', { orgId: actor.activeOrgId })) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+          return;
+        }
+        const targetUid = String(req.params.uid || '').trim();
+        if (!targetUid) {
+          sendApiError(res, 400, 'INVALID_MEMBER_UID', 'errors.badRequest');
+          return;
+        }
+        if (targetUid === actor.uid) {
+          sendApiError(res, 400, 'CANNOT_REMOVE_SELF', 'errors.badRequest');
+          return;
+        }
+
+        const targetMemRows = await db
+          .select()
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.userUid, targetUid),
+              eq(memberships.orgId, actor.activeOrgId),
+            ),
+          )
+          .limit(1);
+
+        if (targetMemRows.length === 0) {
+          sendApiError(res, 404, 'MEMBER_NOT_FOUND', 'errors.notFound');
+          return;
+        }
+
+        if (targetMemRows[0].role === 'org_owner' && actor.orgRole !== 'org_owner') {
+          sendApiError(res, 403, 'CANNOT_REMOVE_OWNER', 'errors.forbidden');
+          return;
+        }
+
+        await db
+          .delete(memberships)
+          .where(
+            and(
+              eq(memberships.userUid, targetUid),
+              eq(memberships.orgId, actor.activeOrgId),
+            ),
+          );
+
+        await db
+          .delete(authSessions)
+          .where(
+            and(
+              eq(authSessions.userUid, targetUid),
+              eq(authSessions.activeOrgId, actor.activeOrgId),
+            ),
+          );
+
+        await logAudit(
+          actor.uid,
+          'org.remove_member',
+          'user',
+          targetUid,
+          actor.activeOrgId,
+          req,
+        );
+
+        res.json({ ok: true });
+      } catch (error) {
+        console.error('DELETE /api/org/members/:uid failed:', error);
+        sendApiError(res, 500, 'ORG_REMOVE_MEMBER_ERROR', 'errors.serverError');
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 2. Transformative Search & Streaming Pipeline (/api/query, /api/results)
@@ -546,10 +1016,11 @@ export async function buildExpressApp() {
 
   app.post('/api/query', async (req: AuthenticatedRequest, res) => {
     const startMs = Date.now();
+    let reservedQuotaBucket: string | null = null;
     try {
       const ipKey = `query:${req.actor?.uid || hashIp(req.ip)}`;
-      if (!checkRateLimit(ipKey, req.actor ? 40 : 15)) {
-        sendApiError(res, 429, 'RATE_LIMIT', 'home.networkError');
+      if (!(await checkSharedRateLimit(ipKey, req.actor ? 40 : 25, 60_000))) {
+        sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
         return;
       }
 
@@ -560,21 +1031,41 @@ export async function buildExpressApp() {
       }
       const { query, locale, clarificationAnswer, overrideContext } = parsedInput.data;
 
-      // Metering check BEFORE running expensive generation (Section 17.3)
+      // Mint or verify signed HttpOnly anon cookie BEFORE SSE headers flush (B2)
+      const anonOwnerId = req.actor
+        ? null
+        : resolveOrCreateAnonId(req, res, appEnv.sessionSecret, appEnv.isProduction);
+
+      // Atomic monthly quota reservation BEFORE running generation (C8)
       if (req.actor) {
-        const [entitlements, used] = await Promise.all([
-          getOrgEntitlements(req.actor.activeOrgId),
-          getMonthlyUsage(req.actor.activeOrgId, 'results_generated'),
-        ]);
-        if (used >= entitlements.resultsPerMonth) {
+        const entitlements = await getOrgEntitlements(req.actor.activeOrgId);
+        const reservation = await reserveMonthlyQuota(
+          req.actor.activeOrgId,
+          'results_generated',
+          entitlements.resultsPerMonth,
+        );
+        if (!reservation.allowed) {
           await logAnalytics('limit_reached', locale, req.actor.activeOrgId);
-          sendApiError(res, 429, 'PLAN_LIMIT_REACHED', 'pricing.title', {
-            used,
+          sendApiError(res, 429, 'PLAN_LIMIT_REACHED', 'errors.planLimitReached', {
+            used: reservation.usedCount,
             limit: entitlements.resultsPerMonth,
             resetDate: nextMonthResetLabel(locale),
           });
           return;
         }
+        reservedQuotaBucket = req.actor.activeOrgId;
+      } else if (anonOwnerId) {
+        const anonBucket = `anon:${anonOwnerId}`;
+        const reservation = await reserveMonthlyQuota(anonBucket, 'results_generated', 15);
+        if (!reservation.allowed) {
+          sendApiError(res, 429, 'PLAN_LIMIT_REACHED', 'errors.planLimitReached', {
+            used: reservation.usedCount,
+            limit: 15,
+            resetDate: nextMonthResetLabel(locale),
+          });
+          return;
+        }
+        reservedQuotaBucket = anonBucket;
       }
 
       const wantsStream = String(req.headers.accept || '').includes('text/event-stream');
@@ -635,12 +1126,12 @@ export async function buildExpressApp() {
         expertSuggestion: finalResult.expertSuggestion,
       });
 
-      // Persist encrypted query & verified JSON result
-      const queryId = `qry_${crypto.randomUUID().slice(0, 12)}`;
+      // Persist encrypted query & private-by-default verified JSON result (B2)
+      const queryId = `qry_${crypto.randomUUID()}`;
       await db.insert(queries).values({
         id: queryId,
         userUid: req.actor?.uid ?? null,
-        anonId: req.actor ? null : hashIp(req.ip),
+        anonId: anonOwnerId,
         orgId: req.actor?.activeOrgId ?? null,
         textEncrypted: encryptField(query),
         locale,
@@ -652,16 +1143,13 @@ export async function buildExpressApp() {
         id: finalResult.id,
         queryId,
         userUid: req.actor?.uid ?? null,
+        anonId: anonOwnerId,
         orgId: req.actor?.activeOrgId ?? null,
         payload: finalResult as unknown as Record<string, unknown>,
         ruleIds: finalResult.trust.ruleIds,
         modelMeta: { provider: getAiProviderStatus().mode },
-        isPublicShare: true,
+        isPublicShare: false,
       });
-
-      if (req.actor) {
-        await incrementMonthlyUsage(req.actor.activeOrgId, 'results_generated');
-      }
 
       const elapsed = Date.now() - startMs;
       await logAnalytics('result_completed', locale, req.actor?.activeOrgId, elapsed, {
@@ -676,6 +1164,9 @@ export async function buildExpressApp() {
         res.json({ result: finalResult });
       }
     } catch (error) {
+      if (reservedQuotaBucket) {
+        await refundMonthlyQuota(reservedQuotaBucket, 'results_generated');
+      }
       console.error('POST /api/query failed:', error);
       if (!res.headersSent) {
         sendApiError(res, 500, 'QUERY_FAILED', 'home.networkError');
@@ -699,8 +1190,9 @@ export async function buildExpressApp() {
         return;
       }
       const row = rows[0];
-      if (row.orgId && !row.isPublicShare && req.actor?.activeOrgId !== row.orgId) {
-        sendApiError(res, 403, 'FORBIDDEN', 'notFound.title');
+      const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+      if (!canAccessResultRecord(req.actor ?? null, verifiedAnonId, row, 'read')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
 
@@ -712,7 +1204,14 @@ export async function buildExpressApp() {
   });
 
   app.post('/api/results/:id/refine', async (req: AuthenticatedRequest, res) => {
+    let reservedQuotaBucket: string | null = null;
     try {
+      const ipKey = req.actor ? `refine:u:${req.actor.uid}` : `refine:ip:${hashIp(req.ip)}`;
+      if (!(await checkSharedRateLimit(ipKey, 30, 60_000))) {
+        sendApiError(res, 429, 'RATE_LIMITED', 'errors.rateLimited');
+        return;
+      }
+
       const rows = await db
         .select()
         .from(results)
@@ -722,9 +1221,34 @@ export async function buildExpressApp() {
         sendApiError(res, 404, 'RESULT_NOT_FOUND', 'notFound.title');
         return;
       }
+      const resultRow = rows[0];
+      const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+      if (!canAccessResultRecord(req.actor ?? null, verifiedAnonId, resultRow, 'mutate')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
 
-      const currentPayload = rows[0].payload as unknown as WijahaResult;
+      const currentPayload = resultRow.payload as unknown as WijahaResult;
       const locale: Locale = req.body?.locale === 'en' ? 'en' : currentPayload.locale;
+
+      if (req.actor) {
+        const entitlements = await getOrgEntitlements(req.actor.activeOrgId);
+        const reservation = await reserveMonthlyQuota(
+          req.actor.activeOrgId,
+          'results_generated',
+          entitlements.resultsPerMonth,
+        );
+        if (!reservation.allowed) {
+          sendApiError(res, 429, 'PLAN_LIMIT_REACHED', 'errors.planLimitReached', {
+            used: reservation.usedCount,
+            limit: entitlements.resultsPerMonth,
+            resetDate: nextMonthResetLabel(locale),
+          });
+          return;
+        }
+        reservedQuotaBucket = req.actor.activeOrgId;
+      }
+
       const clarificationAnswer = req.body?.clarificationAnswer
         ? String(req.body.clarificationAnswer)
         : undefined;
@@ -764,7 +1288,6 @@ export async function buildExpressApp() {
         expertSuggestionsEnabled: req.actor?.expertSuggestionsEnabled ?? true,
       });
 
-      // Keep same result ID or save updated payload so URL remains stable and shareable
       updatedResult.id = currentPayload.id;
       await db
         .update(results)
@@ -777,6 +1300,9 @@ export async function buildExpressApp() {
 
       res.json({ result: updatedResult });
     } catch (error) {
+      if (reservedQuotaBucket) {
+        await refundMonthlyQuota(reservedQuotaBucket, 'results_generated');
+      }
       console.error('POST /api/results/:id/refine failed:', error);
       sendApiError(res, 500, 'REFINE_ERROR', 'home.networkError');
     }
@@ -820,6 +1346,10 @@ export async function buildExpressApp() {
   app.get('/api/projects', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
+      if (!can(actor, 'project:read', { orgId: actor.activeOrgId })) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
       const list = await db
         .select()
         .from(projects)
@@ -865,6 +1395,12 @@ export async function buildExpressApp() {
 
       if (resRows.length === 0) {
         sendApiError(res, 404, 'RESULT_NOT_FOUND', 'notFound.title');
+        return;
+      }
+
+      const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+      if (!canAccessResultRecord(actor, verifiedAnonId, resRows[0], 'read')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
 
@@ -931,14 +1467,64 @@ export async function buildExpressApp() {
       const currentVersion =
         versions.find((v) => v.id === proj.currentVersionId) ?? versions[0];
 
+      const activeShares = await db
+        .select({
+          id: shares.id,
+          token: shares.token,
+          expiresAt: shares.expiresAt,
+          createdAt: shares.createdAt,
+        })
+        .from(shares)
+        .where(
+          and(
+            eq(shares.projectId, proj.id),
+            isNull(shares.revokedAt),
+            gt(shares.expiresAt, new Date()),
+          ),
+        )
+        .orderBy(desc(shares.createdAt));
+
       res.json({
         project: proj,
         currentVersion,
         versions,
+        shares: activeShares,
       });
     } catch (error) {
       console.error('GET /api/projects/:id failed:', error);
       sendApiError(res, 500, 'PROJECT_GET_ERROR', 'home.networkError');
+    }
+  });
+
+  app.delete('/api/projects/:id', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const actor = req.actor!;
+      const projRows = await db
+        .select()
+        .from(projects)
+        .where(and(eq(projects.id, String(req.params.id)), isNull(projects.deletedAt)))
+        .limit(1);
+      if (projRows.length === 0) {
+        sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const proj = projRows[0];
+      if (!can(actor, 'project:delete', { orgId: proj.orgId, ownerUid: proj.ownerUid })) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+
+      const now = new Date();
+      await db.update(projects).set({ deletedAt: now, updatedAt: now }).where(eq(projects.id, proj.id));
+      await db
+        .update(shares)
+        .set({ revokedAt: now })
+        .where(and(eq(shares.projectId, proj.id), isNull(shares.revokedAt)));
+      await logAudit(actor.uid, 'project.delete', 'project', proj.id, proj.orgId, req);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('DELETE /api/projects/:id failed:', error);
+      sendApiError(res, 500, 'PROJECT_DELETE_ERROR', 'home.networkError');
     }
   });
 
@@ -1128,15 +1714,15 @@ export async function buildExpressApp() {
         const projRows = await db
           .select()
           .from(projects)
-          .where(eq(projects.id, String(req.params.id)))
+          .where(and(eq(projects.id, String(req.params.id)), isNull(projects.deletedAt)))
           .limit(1);
         if (projRows.length === 0) {
           sendApiError(res, 404, 'NOT_FOUND', 'notFound.title');
           return;
         }
         const proj = projRows[0];
-        if (!can(actor, 'project:write', { orgId: proj.orgId })) {
-          sendApiError(res, 403, 'FORBIDDEN', 'notFound.title');
+        if (!can(actor, 'project:write', { orgId: proj.orgId, ownerUid: proj.ownerUid })) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
           return;
         }
         const trigger = String(req.body?.trigger || 'high_sensitivity');
@@ -1168,31 +1754,70 @@ export async function buildExpressApp() {
       const projRows = await db
         .select()
         .from(projects)
-        .where(eq(projects.id, String(req.params.id)))
+        .where(and(eq(projects.id, String(req.params.id)), isNull(projects.deletedAt)))
         .limit(1);
       if (projRows.length === 0) {
         sendApiError(res, 404, 'NOT_FOUND', 'notFound.title');
         return;
       }
       const proj = projRows[0];
-      if (!can(actor, 'project:write', { orgId: proj.orgId })) {
-        sendApiError(res, 403, 'FORBIDDEN', 'notFound.title');
+      if (!can(actor, 'project:write', { orgId: proj.orgId, ownerUid: proj.ownerUid })) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
 
+      const rawDays = Number(req.body?.expiresInDays);
+      const expiresInDays = Number.isFinite(rawDays)
+        ? Math.min(90, Math.max(1, Math.round(rawDays)))
+        : 30;
+      const expiresAt = new Date(Date.now() + expiresInDays * 24 * 3600_000);
+      const shareId = `shr_${crypto.randomUUID()}`;
       const token = crypto.randomBytes(16).toString('hex');
+
       await db.insert(shares).values({
-        id: `shr_${crypto.randomUUID().slice(0, 10)}`,
+        id: shareId,
         projectId: proj.id,
         orgId: proj.orgId,
         token,
         createdByUid: actor.uid,
-        expiresAt: new Date(Date.now() + 14 * 24 * 3600_000),
+        expiresAt,
       });
-      res.json({ token });
+      await logAudit(actor.uid, 'share.create', 'share', shareId, proj.orgId, req, {
+        projectId: proj.id,
+        expiresInDays,
+      });
+      res.json({ id: shareId, token, expiresAt: expiresAt.toISOString() });
     } catch (error) {
       console.error('Share project failed:', error);
       sendApiError(res, 500, 'SHARE_ERROR', 'home.networkError');
+    }
+  });
+
+  app.delete('/api/shares/:id', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
+    try {
+      const actor = req.actor!;
+      const rows = await db
+        .select()
+        .from(shares)
+        .where(and(eq(shares.id, String(req.params.id)), isNull(shares.revokedAt)))
+        .limit(1);
+      if (rows.length === 0) {
+        sendApiError(res, 404, 'SHARE_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const sh = rows[0];
+      if (!can(actor, 'project:write', { orgId: sh.orgId, ownerUid: sh.createdByUid ?? undefined })) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+      await db.update(shares).set({ revokedAt: new Date() }).where(eq(shares.id, sh.id));
+      await logAudit(actor.uid, 'share.revoke', 'share', sh.id, sh.orgId, req, {
+        projectId: sh.projectId,
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('DELETE /api/shares/:id failed:', error);
+      sendApiError(res, 500, 'SHARE_REVOKE_ERROR', 'home.networkError');
     }
   });
 
@@ -1201,7 +1826,13 @@ export async function buildExpressApp() {
       const rows = await db
         .select()
         .from(shares)
-        .where(and(eq(shares.token, String(req.params.token)), gt(shares.expiresAt, new Date())))
+        .where(
+          and(
+            eq(shares.token, String(req.params.token)),
+            isNull(shares.revokedAt),
+            gt(shares.expiresAt, new Date()),
+          ),
+        )
         .limit(1);
       if (rows.length === 0) {
         sendApiError(res, 404, 'SHARE_EXPIRED', 'notFound.title');
@@ -1210,7 +1841,7 @@ export async function buildExpressApp() {
       const projRows = await db
         .select()
         .from(projects)
-        .where(eq(projects.id, rows[0].projectId))
+        .where(and(eq(projects.id, rows[0].projectId), isNull(projects.deletedAt)))
         .limit(1);
       if (projRows.length === 0) {
         sendApiError(res, 404, 'NOT_FOUND', 'notFound.title');
@@ -1240,9 +1871,17 @@ export async function buildExpressApp() {
       let versionNumber = 1;
 
       if (projectId) {
-        const projRows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-        if (projRows.length === 0 || !can(actor, 'project:read', { orgId: projRows[0].orgId })) {
-          sendApiError(res, 403, 'FORBIDDEN', 'notFound.title');
+        const projRows = await db
+          .select()
+          .from(projects)
+          .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
+          .limit(1);
+        if (projRows.length === 0) {
+          sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'notFound.title');
+          return;
+        }
+        if (!can(actor, 'project:read', { orgId: projRows[0].orgId, ownerUid: projRows[0].ownerUid })) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
           return;
         }
         const verRows = await db
@@ -1254,6 +1893,15 @@ export async function buildExpressApp() {
         versionNumber = verRows[0]?.versionNumber ?? 1;
       } else if (resultId) {
         const resRows = await db.select().from(results).where(eq(results.id, resultId)).limit(1);
+        if (resRows.length === 0) {
+          sendApiError(res, 404, 'EXPORT_SOURCE_NOT_FOUND', 'notFound.title');
+          return;
+        }
+        const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+        if (!canAccessResultRecord(actor, verifiedAnonId, resRows[0], 'read')) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+          return;
+        }
         payload = (resRows[0]?.payload as unknown as WijahaResult) ?? null;
       }
 
@@ -1267,6 +1915,20 @@ export async function buildExpressApp() {
         db.select().from(orgs).where(eq(orgs.id, actor.activeOrgId)).limit(1),
       ]);
 
+      const exportLimit = Math.max(30, entitlements.resultsPerMonth * 2);
+      const exportReserve = await reserveMonthlyQuota(
+        actor.activeOrgId,
+        'exports_created',
+        exportLimit,
+      );
+      if (!exportReserve.allowed) {
+        sendApiError(res, 429, 'PLAN_LIMIT_REACHED', 'errors.planLimitReached', {
+          used: exportReserve.usedCount,
+          limit: exportLimit,
+        });
+        return;
+      }
+
       const orgDisplay = !orgRows[0]?.isPersonal ? orgRows[0]?.name : undefined;
 
       await db.insert(exportsLog).values({
@@ -1277,7 +1939,6 @@ export async function buildExpressApp() {
         format,
         watermarked: entitlements.exportsWatermark,
       });
-      await incrementMonthlyUsage(actor.activeOrgId, 'exports_created');
       await logAnalytics('export_created', payload.locale, actor.activeOrgId, undefined, { format });
       await logAudit(actor.uid, `export.${format}`, 'project', projectId || resultId || 'direct', actor.activeOrgId, req);
 
@@ -1310,6 +1971,9 @@ export async function buildExpressApp() {
       );
       res.send(pdfOut.buffer);
     } catch (error) {
+      if (req.actor) {
+        await refundMonthlyQuota(req.actor.activeOrgId, 'exports_created');
+      }
       console.error('POST /api/export failed:', error);
       sendApiError(res, 500, 'EXPORT_ERROR', 'home.networkError');
     }
@@ -1332,7 +1996,7 @@ export async function buildExpressApp() {
         parsed.data.locale,
       );
       if (req.actor) {
-        await incrementMonthlyUsage(req.actor.activeOrgId, 'checks_run');
+        await reserveMonthlyQuota(req.actor.activeOrgId, 'checks_run', 10_000);
       }
       res.json({ report });
     } catch (error) {
@@ -1388,11 +2052,14 @@ export async function buildExpressApp() {
       }
 
       const nodes = scRows[0].nodes as unknown as ScenarioNode[];
-      const runId = `run_${crypto.randomUUID().slice(0, 12)}`;
+      const anonOwnerId = req.actor
+        ? null
+        : resolveOrCreateAnonId(req, res, appEnv.sessionSecret, appEnv.isProduction);
+      const runId = `run_${crypto.randomUUID()}`;
       await db.insert(simulationRuns).values({
         id: runId,
         userUid: req.actor?.uid ?? null,
-        anonId: req.actor ? null : hashIp(req.ip),
+        anonId: anonOwnerId,
         orgId: req.actor?.activeOrgId ?? null,
         scenarioId,
         locale,
@@ -1423,6 +2090,11 @@ export async function buildExpressApp() {
         return;
       }
       const run = runRows[0];
+      const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+      if (!canAccessSimulationRun(req.actor ?? null, verifiedAnonId, run)) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
 
       const scRows = await db
         .select()
@@ -1628,7 +2300,7 @@ export async function buildExpressApp() {
     }
   });
 
-  app.get('/api/simulations/:id/report', async (req, res) => {
+  app.get('/api/simulations/:id/report', async (req: AuthenticatedRequest, res) => {
     try {
       const rows = await db
         .select()
@@ -1637,6 +2309,11 @@ export async function buildExpressApp() {
         .limit(1);
       if (rows.length === 0 || !rows[0].reportPayload) {
         sendApiError(res, 404, 'REPORT_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const verifiedAnonId = readVerifiedAnonId(req, appEnv.sessionSecret);
+      if (!canAccessSimulationRun(req.actor ?? null, verifiedAnonId, rows[0])) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
       res.json({ report: rows[0].reportPayload });
@@ -1684,71 +2361,141 @@ export async function buildExpressApp() {
     }
   });
 
-  app.post('/api/service-requests', async (req: AuthenticatedRequest, res) => {
-    try {
-      const parsed = ServiceRequestInputSchema.safeParse(req.body);
-      if (!parsed.success) {
-        sendApiError(res, 400, 'INVALID_SERVICE_REQUEST', 'experts.requestFormTitle');
-        return;
-      }
+  app.post(
+    '/api/service-requests',
+    requireAuthenticated,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const actor = req.actor!;
+        if (!(await checkSharedRateLimit(`srvreq:u:${actor.uid}`, 10, 15 * 60_000))) {
+          sendApiError(res, 429, 'RATE_LIMITED', 'errors.rateLimited');
+          return;
+        }
 
-      const srvRows = await db
-        .select()
-        .from(services)
-        .where(eq(services.id, parsed.data.serviceId))
-        .limit(1);
-      if (srvRows.length === 0) {
-        sendApiError(res, 404, 'SERVICE_NOT_FOUND', 'experts.title');
-        return;
-      }
-      const srv = srvRows[0];
-      const reqId = `REQ-${Math.floor(10000 + Math.random() * 90000)}`;
-      const isFixedPaid = srv.pricingType === 'fixed' && Boolean(srv.priceAmountKwd);
+        const parsed = ServiceRequestInputSchema.safeParse(req.body);
+        if (!parsed.success) {
+          sendApiError(res, 400, 'INVALID_SERVICE_REQUEST', 'errors.badRequest');
+          return;
+        }
 
-      await db.insert(serviceRequests).values({
-        id: reqId,
-        requesterUid: req.actor?.uid ?? null,
-        requesterEmail: parsed.data.requesterEmail,
-        requesterName: parsed.data.requesterName,
-        orgId: req.actor?.activeOrgId ?? null,
-        serviceId: srv.id,
-        projectId: parsed.data.projectId ?? null,
-        triggerSource: parsed.data.triggerSource,
-        status: isFixedPaid ? 'in_progress' : 'new',
-        contextShared: parsed.data.contextShared,
-        clientNotes: parsed.data.clientNotes,
-        assignedOwner: srv.owner,
-        quotedAmountKwd: srv.priceAmountKwd,
-        paid: isFixedPaid,
-      });
+        if (parsed.data.projectId) {
+          const projRows = await db
+            .select()
+            .from(projects)
+            .where(and(eq(projects.id, parsed.data.projectId), isNull(projects.deletedAt)))
+            .limit(1);
+          if (
+            projRows.length === 0 ||
+            !can(actor, 'project:read', {
+              orgId: projRows[0].orgId,
+              ownerUid: projRows[0].ownerUid,
+            })
+          ) {
+            sendApiError(res, 403, 'FORBIDDEN_PROJECT', 'errors.forbidden');
+            return;
+          }
+        }
 
-      await db.insert(expertSuggestionEvents).values({
-        userUid: req.actor?.uid ?? null,
-        orgId: req.actor?.activeOrgId ?? null,
-        projectId: parsed.data.projectId ?? null,
-        triggerType: parsed.data.triggerSource,
-        eventType: 'requested',
-      });
+        const srvRows = await db
+          .select()
+          .from(services)
+          .where(eq(services.id, parsed.data.serviceId))
+          .limit(1);
+        if (srvRows.length === 0) {
+          sendApiError(res, 404, 'SERVICE_NOT_FOUND', 'errors.notFound');
+          return;
+        }
+        const srv = srvRows[0];
+        const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const reqId = `REQ-${dateStamp}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+        const isFixedPriced = srv.pricingType === 'fixed' && Boolean(srv.priceAmountKwd);
 
-      if (isFixedPaid && srv.priceAmountKwd) {
-        await processBillingWebhook({
-          eventId: `evt_srv_${reqId}`,
-          provider: 'sandbox',
-          eventType: 'service.paid',
-          orgId: req.actor?.activeOrgId || 'guest_checkout',
-          userUid: req.actor?.uid || 'guest',
-          targetId: srv.id,
-          amountKwd: srv.priceAmountKwd,
-          serviceOwner: srv.owner as 'yousef' | 'ahmad' | 'joint',
+        await db.insert(serviceRequests).values({
+          id: reqId,
+          requesterUid: actor.uid,
+          requesterEmail: parsed.data.requesterEmail,
+          requesterName: parsed.data.requesterName,
+          orgId: actor.activeOrgId,
+          serviceId: srv.id,
+          projectId: parsed.data.projectId ?? null,
+          triggerSource: parsed.data.triggerSource,
+          status: 'new',
+          contextShared: parsed.data.contextShared,
+          clientNotes: parsed.data.clientNotes,
+          assignedOwner: srv.owner,
+          quotedAmountKwd: srv.priceAmountKwd,
+          paid: false,
         });
-      }
 
-      res.status(201).json({ id: reqId, paid: isFixedPaid });
-    } catch (error) {
-      console.error('POST /api/service-requests failed:', error);
-      sendApiError(res, 500, 'SERVICE_REQ_ERROR', 'home.networkError');
-    }
-  });
+        await db.insert(expertSuggestionEvents).values({
+          userUid: actor.uid,
+          orgId: actor.activeOrgId,
+          projectId: parsed.data.projectId ?? null,
+          triggerType: parsed.data.triggerSource,
+          eventType: 'requested',
+        });
+
+        await logAudit(
+          actor.uid,
+          'service_request.created',
+          'service_request',
+          reqId,
+          actor.activeOrgId,
+          req,
+        );
+
+        if (isFixedPriced && srv.priceAmountKwd) {
+          const checkoutSessionId = `chk_${crypto.randomUUID()}`;
+          await db.insert(billingCheckoutSessions).values({
+            id: checkoutSessionId,
+            provider: billingProvider.name,
+            providerSessionId: `pending_${checkoutSessionId}`,
+            orgId: actor.activeOrgId,
+            userUid: actor.uid,
+            kind: 'service',
+            targetId: srv.id,
+            amountKwd: srv.priceAmountKwd,
+            serviceRequestId: reqId,
+            serviceOwner: srv.owner,
+            status: 'pending',
+            expiresAt: new Date(Date.now() + 3600_000),
+          });
+
+          const created = await billingProvider.createCheckoutSession({
+            checkoutSessionId,
+            orgId: actor.activeOrgId,
+            userUid: actor.uid,
+            kind: 'service',
+            targetId: srv.id,
+            title: srv.titleEn,
+            amountKwd: srv.priceAmountKwd,
+            successPath: `/experts?request=${encodeURIComponent(reqId)}`,
+            cancelPath: `/request/${encodeURIComponent(srv.id)}`,
+          });
+
+          await db
+            .update(billingCheckoutSessions)
+            .set({ providerSessionId: created.providerSessionId })
+            .where(eq(billingCheckoutSessions.id, checkoutSessionId));
+
+          res.status(201).json({
+            id: reqId,
+            paid: false,
+            checkoutSessionId,
+            providerSessionId: created.providerSessionId,
+            checkoutUrl: created.checkoutUrl,
+            provider: billingProvider.name,
+          });
+          return;
+        }
+
+        res.status(201).json({ id: reqId, paid: false });
+      } catch (error) {
+        console.error('POST /api/service-requests failed:', error);
+        sendApiError(res, 500, 'SERVICE_REQ_ERROR', 'errors.serverError');
+      }
+    },
+  );
 
   // -------------------------------------------------------------------------
   // 7. Plans, Checkout, Idempotent Webhook & Invoices
@@ -1788,66 +2535,180 @@ export async function buildExpressApp() {
   app.post('/api/billing/checkout', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
-      const planId = String(req.body?.planId || 'individual');
+      if (!can(actor, 'org:manage_billing', { orgId: actor.activeOrgId })) {
+        sendApiError(res, 403, 'BILLING_FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+
+      const planId = String(req.body?.planId || '').trim();
       const billingCycle = req.body?.billingCycle === 'annual' ? 'annual' : 'monthly';
       const planRows = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
       if (planRows.length === 0) {
-        sendApiError(res, 404, 'PLAN_NOT_FOUND', 'pricing.title');
+        sendApiError(res, 404, 'PLAN_NOT_FOUND', 'errors.notFound');
         return;
       }
       const p = planRows[0];
-      const amount = billingCycle === 'annual' ? p.annualPriceKwd : p.monthlyPriceKwd;
-      const eventId = `evt_chk_${crypto.randomUUID().slice(0, 12)}`;
+      if (p.isQuote || p.id === 'free') {
+        sendApiError(res, 400, 'INVALID_CHECKOUT_PLAN', 'errors.badRequest');
+        return;
+      }
 
-      await processBillingWebhook({
-        eventId,
-        provider: 'mock_sandbox',
-        eventType: 'subscription.activated',
+      const amount = billingCycle === 'annual' ? p.annualPriceKwd : p.monthlyPriceKwd;
+      const checkoutSessionId = `chk_${crypto.randomUUID()}`;
+      const placeholderProviderSessionId = `pending_${checkoutSessionId}`;
+
+      await db.insert(billingCheckoutSessions).values({
+        id: checkoutSessionId,
+        provider: billingProvider.name,
+        providerSessionId: placeholderProviderSessionId,
         orgId: actor.activeOrgId,
         userUid: actor.uid,
+        kind: 'subscription',
         targetId: p.id,
         billingCycle,
         amountKwd: amount,
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 3600_000),
       });
 
-      await logAnalytics('checkout_completed', 'ar', actor.activeOrgId, undefined, {
-        planId: p.id,
+      const created = await billingProvider.createCheckoutSession({
+        checkoutSessionId,
+        orgId: actor.activeOrgId,
+        userUid: actor.uid,
+        kind: 'subscription',
+        targetId: p.id,
+        title: `WIJAHA ${p.nameEn} (${billingCycle})`,
+        amountKwd: amount,
         billingCycle,
+        successPath: '/pricing?checkout=success',
+        cancelPath: '/pricing?checkout=cancelled',
       });
-      res.json({ ok: true, planId: p.id });
+
+      await db
+        .update(billingCheckoutSessions)
+        .set({ providerSessionId: created.providerSessionId })
+        .where(eq(billingCheckoutSessions.id, checkoutSessionId));
+
+      await logAudit(
+        actor.uid,
+        'billing.checkout_created',
+        'plan',
+        p.id,
+        actor.activeOrgId,
+        req,
+      );
+
+      res.json({
+        ok: true,
+        sessionId: checkoutSessionId,
+        providerSessionId: created.providerSessionId,
+        checkoutUrl: created.checkoutUrl,
+        provider: billingProvider.name,
+      });
     } catch (error) {
       console.error('POST /api/billing/checkout failed:', error);
-      sendApiError(res, 500, 'CHECKOUT_ERROR', 'home.networkError');
+      sendApiError(res, 500, 'CHECKOUT_ERROR', 'errors.serverError');
     }
   });
 
-  app.post('/api/billing/webhook', async (req, res) => {
-    try {
-      const eventId = String(req.body?.eventId || '');
-      if (!eventId) {
-        sendApiError(res, 400, 'MISSING_EVENT_ID', 'pricing.title');
-        return;
-      }
-      const out = await processBillingWebhook({
-        eventId,
-        provider: String(req.body?.provider || 'mock_sandbox'),
-        eventType: req.body?.eventType === 'service.paid' ? 'service.paid' : 'subscription.activated',
-        orgId: String(req.body?.orgId || ''),
-        userUid: String(req.body?.userUid || ''),
-        targetId: String(req.body?.targetId || 'individual'),
-        billingCycle: req.body?.billingCycle === 'annual' ? 'annual' : 'monthly',
-        amountKwd: Number(req.body?.amountKwd ?? 5),
-      });
-      res.json(out);
-    } catch (error) {
-      console.error('POST /api/billing/webhook failed:', error);
-      sendApiError(res, 500, 'WEBHOOK_ERROR', 'home.networkError');
-    }
-  });
+  if (!appEnv.isProduction && appEnv.BILLING_PROVIDER === 'mock') {
+    app.post(
+      '/api/billing/dev-mock-complete',
+      requireAuthenticated,
+      async (req: AuthenticatedRequest, res) => {
+        try {
+          const actor = req.actor!;
+          const sessionId = String(req.body?.sessionId || '').trim();
+          if (!sessionId) {
+            sendApiError(res, 400, 'MISSING_SESSION_ID', 'errors.badRequest');
+            return;
+          }
+          const rows = await db
+            .select()
+            .from(billingCheckoutSessions)
+            .where(eq(billingCheckoutSessions.id, sessionId))
+            .limit(1);
+          if (rows.length === 0) {
+            sendApiError(res, 404, 'SESSION_NOT_FOUND', 'errors.notFound');
+            return;
+          }
+          const sessionRow = rows[0];
+          if (
+            sessionRow.userUid !== actor.uid &&
+            !can(actor, 'org:manage_billing', { orgId: sessionRow.orgId })
+          ) {
+            sendApiError(res, 403, 'BILLING_FORBIDDEN', 'errors.forbidden');
+            return;
+          }
+
+          const payloadJson = JSON.stringify({
+            eventId: `evt_mock_${sessionRow.id}`,
+            eventType: 'checkout.completed',
+            checkoutSessionId: sessionRow.id,
+            providerSessionId: sessionRow.providerSessionId,
+          });
+          const rawBuf = Buffer.from(payloadJson, 'utf8');
+          const sig = billingProvider.signMockWebhookPayload?.(payloadJson) || '';
+          if (!billingProvider.verifyWebhook(rawBuf, { 'x-wijaha-mock-signature': sig })) {
+            sendApiError(res, 400, 'MOCK_SIGNATURE_FAILED', 'errors.badRequest');
+            return;
+          }
+
+          const out = await processBillingWebhook({
+            eventId: `evt_mock_${sessionRow.id}`,
+            provider: billingProvider.name,
+            eventType:
+              sessionRow.kind === 'service' ? 'service.paid' : 'subscription.activated',
+            orgId: sessionRow.orgId,
+            userUid: sessionRow.userUid,
+            targetId: sessionRow.targetId,
+            billingCycle: sessionRow.billingCycle === 'annual' ? 'annual' : 'monthly',
+            amountKwd: sessionRow.amountKwd,
+            serviceRequestId: sessionRow.serviceRequestId,
+            serviceOwner: (sessionRow.serviceOwner as 'yousef' | 'ahmad' | 'joint' | null) ?? undefined,
+            checkoutSessionId: sessionRow.id,
+          });
+
+          await logAnalytics('checkout_completed', 'ar', sessionRow.orgId, undefined, {
+            targetId: sessionRow.targetId,
+            kind: sessionRow.kind,
+          });
+          await logAudit(
+            actor.uid,
+            'billing.dev_mock_completed',
+            sessionRow.kind,
+            sessionRow.targetId,
+            sessionRow.orgId,
+            req,
+          );
+          res.json({ ok: true, ...out });
+        } catch (error) {
+          console.error('POST /api/billing/dev-mock-complete failed:', error);
+          sendApiError(res, 500, 'MOCK_COMPLETE_ERROR', 'errors.serverError');
+        }
+      },
+    );
+  }
 
   app.post('/api/billing/cancel', requireAuthenticated, async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
+      if (!can(actor, 'org:manage_billing', { orgId: actor.activeOrgId })) {
+        sendApiError(res, 403, 'BILLING_FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+
+      const subRows = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.orgId, actor.activeOrgId))
+        .limit(1);
+
+      await billingProvider.cancelSubscription({
+        orgId: actor.activeOrgId,
+        providerRef: subRows[0]?.providerRef ?? null,
+      });
+
       await db
         .update(subscriptions)
         .set({ cancelAtPeriodEnd: true, status: 'cancelled', updatedAt: new Date() })
@@ -1856,11 +2717,20 @@ export async function buildExpressApp() {
         .update(orgs)
         .set({ planId: 'free', updatedAt: new Date() })
         .where(eq(orgs.id, actor.activeOrgId));
+
       await logAnalytics('subscription_cancelled', 'ar', actor.activeOrgId);
+      await logAudit(
+        actor.uid,
+        'billing.subscription_cancelled',
+        'org',
+        actor.activeOrgId,
+        actor.activeOrgId,
+        req,
+      );
       res.json({ ok: true });
     } catch (error) {
       console.error('POST /api/billing/cancel failed:', error);
-      sendApiError(res, 500, 'CANCEL_ERROR', 'home.networkError');
+      sendApiError(res, 500, 'CANCEL_ERROR', 'errors.serverError');
     }
   });
 
@@ -1885,14 +2755,24 @@ export async function buildExpressApp() {
 
   app.use('/api/admin', (req: AuthenticatedRequest, res, next) => {
     if (!can(req.actor ?? null, 'admin:access')) {
-      sendApiError(res, 403, 'ADMIN_FORBIDDEN', 'admin.title');
+      sendApiError(res, 403, 'ADMIN_FORBIDDEN', 'errors.forbidden');
+      return;
+    }
+    if (appEnv.enforceAdminMfa && !req.actor!.mfaVerified) {
+      sendApiError(res, 403, 'MFA_REQUIRED', 'errors.mfaRequired');
       return;
     }
     next();
   });
 
-  app.get('/api/admin/overview', async (_req: AuthenticatedRequest, res) => {
+  app.get('/api/admin/overview', async (req: AuthenticatedRequest, res) => {
     try {
+      const actor = req.actor!;
+      const canSeeAllRequests = can(actor, 'admin:requests:all');
+      const canSeeOwnRequests = can(actor, 'admin:requests:own');
+      const canSeeFinance = can(actor, 'admin:finance');
+      const canSeeEvals = can(actor, 'admin:evals');
+
       const [
         allRules,
         allReqs,
@@ -1902,16 +2782,48 @@ export async function buildExpressApp() {
         splitRules,
         ledgerRows,
         srcRows,
+        expRows,
       ] = await Promise.all([
         db.select().from(knowledgeRules),
-        db.select().from(serviceRequests).orderBy(desc(serviceRequests.createdAt)),
+        canSeeAllRequests || canSeeOwnRequests
+          ? db.select().from(serviceRequests).orderBy(desc(serviceRequests.createdAt))
+          : Promise.resolve([]),
         db.select().from(feedback).orderBy(desc(feedback.createdAt)),
         db.select().from(analyticsEvents),
-        db.select().from(evalRuns).orderBy(desc(evalRuns.createdAt)).limit(5),
-        db.select().from(revenueSplitRules),
-        db.select().from(revenueLedger).orderBy(desc(revenueLedger.createdAt)),
+        canSeeEvals
+          ? db.select().from(evalRuns).orderBy(desc(evalRuns.createdAt)).limit(5)
+          : Promise.resolve([]),
+        canSeeFinance ? db.select().from(revenueSplitRules) : Promise.resolve([]),
+        canSeeFinance
+          ? db.select().from(revenueLedger).orderBy(desc(revenueLedger.createdAt))
+          : Promise.resolve([]),
         db.select().from(sources),
+        db.select().from(experts),
       ]);
+
+      let visibleServiceRequests = allReqs;
+      if (!canSeeAllRequests) {
+        if (canSeeOwnRequests) {
+          const ownerTag = resolveExpertOwnerTag(actor);
+          visibleServiceRequests = ownerTag
+            ? allReqs.filter((r) => r.assignedOwner === ownerTag || r.assignedOwner === 'joint')
+            : [];
+        } else {
+          visibleServiceRequests = [];
+        }
+      }
+
+      if (visibleServiceRequests.length > 0) {
+        await logAudit(
+          actor.uid,
+          'admin.view_service_requests',
+          'service_request',
+          'overview',
+          null,
+          req,
+          { visibleCount: visibleServiceRequests.length, role: actor.platformRole },
+        );
+      }
 
       const soonCutoff = new Date(Date.now() + 30 * 24 * 3600_000).toISOString().slice(0, 10);
       const expiringSoon = allRules.filter((r) => r.reviewDueAt <= soonCutoff);
@@ -1923,7 +2835,7 @@ export async function buildExpressApp() {
           demoRules: allRules.filter((r) => r.status === 'draft_demo').length,
           inReviewRules: allRules.filter((r) => r.status === 'in_review').length,
           expiringWithin30Days: expiringSoon.length,
-          openServiceRequests: allReqs.filter((r) => r.status !== 'closed').length,
+          openServiceRequests: visibleServiceRequests.filter((r) => r.status !== 'closed').length,
           errorReports: allFeedback.filter((f) => f.reportedError).length,
           completedResultsCount: allEvents.filter((e) => e.eventName === 'result_completed').length,
           estimatedAiCostKwd: Number(
@@ -1932,7 +2844,8 @@ export async function buildExpressApp() {
         },
         rules: allRules,
         sources: srcRows,
-        serviceRequests: allReqs,
+        experts: expRows,
+        serviceRequests: visibleServiceRequests,
         errorReports: allFeedback.filter((f) => f.reportedError),
         evalRuns: latestEvals,
         revenueSplitRules: splitRules,
@@ -2046,9 +2959,18 @@ export async function buildExpressApp() {
   app.patch('/api/admin/rules/:id/status', async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
+      if (!can(actor, 'admin:content')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
       const ruleId = String(req.params.id);
-      const nextStatus = String(req.body?.status || 'in_review');
-      const reviewNote = String(req.body?.reviewNote || '');
+      const parsedStatus = RuleStatusSchema.safeParse(req.body?.status);
+      if (!parsedStatus.success) {
+        sendApiError(res, 400, 'INVALID_RULE_STATUS', 'errors.validationError');
+        return;
+      }
+      const nextStatus = parsedStatus.data;
+      const reviewNote = String(req.body?.reviewNote || '').slice(0, 1000);
 
       const rows = await db
         .select()
@@ -2056,10 +2978,18 @@ export async function buildExpressApp() {
         .where(eq(knowledgeRules.id, ruleId))
         .limit(1);
       if (rows.length === 0) {
-        sendApiError(res, 404, 'RULE_NOT_FOUND', 'admin.tabs.content');
+        sendApiError(res, 404, 'RULE_NOT_FOUND', 'notFound.title');
         return;
       }
       const rule = rows[0];
+
+      if (!canTransitionRuleStatus(rule.status, nextStatus)) {
+        sendApiError(res, 400, 'INVALID_RULE_TRANSITION', 'errors.invalidRuleTransition', {
+          from: rule.status,
+          to: nextStatus,
+        });
+        return;
+      }
 
       if (nextStatus === 'approved') {
         const neededAction =
@@ -2067,7 +2997,7 @@ export async function buildExpressApp() {
             ? 'content:approve_high_sensitivity'
             : 'content:approve_standard';
         if (!can(actor, neededAction)) {
-          sendApiError(res, 403, 'SENIOR_REVIEWER_REQUIRED', 'admin.tabs.review');
+          sendApiError(res, 403, 'SENIOR_REVIEWER_REQUIRED', 'errors.forbidden');
           return;
         }
       }
@@ -2085,8 +3015,24 @@ export async function buildExpressApp() {
         })
         .where(eq(knowledgeRules.id, ruleId));
 
+      await db.insert(knowledgeRuleVersions).values({
+        ruleId,
+        version: rule.version + 1,
+        snapshot: {
+          titleAr: rule.titleAr,
+          titleEn: rule.titleEn,
+          bodyAr: rule.bodyAr,
+          bodyEn: rule.bodyEn,
+          level: rule.level,
+          sensitivity: rule.sensitivity,
+          status: nextStatus,
+        },
+        changedByUid: actor.uid,
+        changeNote: reviewNote || `status: ${rule.status} -> ${nextStatus}`,
+      });
+
       await logAudit(actor.uid, `content.status_${nextStatus}`, 'knowledge_rule', ruleId, null, req);
-      res.json({ ok: true });
+      res.json({ ok: true, status: nextStatus });
     } catch (error) {
       console.error('PATCH /api/admin/rules/:id/status failed:', error);
       sendApiError(res, 500, 'ADMIN_RULE_STATUS_ERROR', 'home.networkError');
@@ -2096,11 +3042,31 @@ export async function buildExpressApp() {
   app.patch('/api/admin/requests/:id', async (req: AuthenticatedRequest, res) => {
     try {
       const actor = req.actor!;
-      if (!can(actor, 'requests:manage')) {
-        sendApiError(res, 403, 'FORBIDDEN', 'admin.tabs.requests');
+      if (!can(actor, 'admin:requests:own')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
         return;
       }
       const reqId = String(req.params.id);
+      const existingRows = await db
+        .select()
+        .from(serviceRequests)
+        .where(eq(serviceRequests.id, reqId))
+        .limit(1);
+      if (existingRows.length === 0) {
+        sendApiError(res, 404, 'REQUEST_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      if (!can(actor, 'admin:requests:all')) {
+        const ownerTag = resolveExpertOwnerTag(actor);
+        if (
+          !ownerTag ||
+          (existingRows[0].assignedOwner !== ownerTag && existingRows[0].assignedOwner !== 'joint')
+        ) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+          return;
+        }
+      }
+
       const updates: Partial<typeof serviceRequests.$inferInsert> = { updatedAt: new Date() };
       if (req.body?.status) updates.status = String(req.body.status);
       if (req.body?.internalNotes !== undefined)
@@ -2116,6 +3082,48 @@ export async function buildExpressApp() {
     } catch (error) {
       console.error('PATCH /api/admin/requests/:id failed:', error);
       sendApiError(res, 500, 'CRM_UPDATE_ERROR', 'home.networkError');
+    }
+  });
+
+  app.patch('/api/admin/experts/:id', async (req: AuthenticatedRequest, res) => {
+    try {
+      const actor = req.actor!;
+      if (actor.platformRole !== 'platform_admin' && actor.platformRole !== 'expert' && actor.platformRole !== 'senior_reviewer') {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+      const expertId = String(req.params.id || '').trim();
+      const avatarUrl = String(req.body?.avatarUrl ?? '').trim();
+      if (
+        avatarUrl !== '' &&
+        !avatarUrl.startsWith('https://') &&
+        !avatarUrl.startsWith('/assets/')
+      ) {
+        sendApiError(res, 400, 'INVALID_AVATAR_URL', 'errors.badRequest');
+        return;
+      }
+
+      const expRows = await db.select().from(experts).where(eq(experts.id, expertId)).limit(1);
+      if (expRows.length === 0) {
+        sendApiError(res, 404, 'EXPERT_NOT_FOUND', 'errors.notFound');
+        return;
+      }
+
+      if (actor.platformRole === 'expert') {
+        const emailLower = actor.email.toLowerCase();
+        const roleTag = expRows[0].roleTag;
+        if (!emailLower.includes(roleTag) && !actor.uid.includes(roleTag)) {
+          sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+          return;
+        }
+      }
+
+      await db.update(experts).set({ avatarUrl }).where(eq(experts.id, expertId));
+      await logAudit(actor.uid, 'expert.update_avatar', 'expert', expertId, null, req);
+      res.json({ ok: true, avatarUrl });
+    } catch (error) {
+      console.error('PATCH /api/admin/experts/:id failed:', error);
+      sendApiError(res, 500, 'EXPERT_AVATAR_ERROR', 'errors.serverError');
     }
   });
 
@@ -2159,8 +3167,33 @@ export async function buildExpressApp() {
     }
   });
 
-  app.post('/api/admin/evals/run', async (_req: AuthenticatedRequest, res) => {
+  app.post('/api/admin/evals/run', async (req: AuthenticatedRequest, res) => {
     try {
+      const actor = req.actor!;
+      if (!can(actor, 'admin:evals')) {
+        sendApiError(res, 403, 'FORBIDDEN', 'errors.forbidden');
+        return;
+      }
+
+      const evalRateAllowed = await checkSharedRateLimit(
+        `admin_evals_run:${actor.uid}`,
+        3,
+        15 * 60_000,
+      );
+      if (!evalRateAllowed) {
+        sendApiError(res, 429, 'RATE_LIMITED', 'errors.rateLimited');
+        return;
+      }
+
+      const costCheck = await db.execute(
+        `SELECT COALESCE(SUM(estimated_cost_kwd), 0) AS total FROM ai_calls WHERE created_at >= CURRENT_DATE`,
+      );
+      const todayCostKwd = Number((costCheck.rows[0] as { total?: string | number })?.total || 0);
+      if (todayCostKwd >= appEnv.AI_DAILY_PLATFORM_CAP_KWD) {
+        sendApiError(res, 429, 'COST_CAP_REACHED', 'errors.costCapReached');
+        return;
+      }
+
       const [cases, rules] = await Promise.all([
         db.select().from(evalCases),
         db.select().from(knowledgeRules),
@@ -2230,6 +3263,7 @@ export async function buildExpressApp() {
       };
 
       await db.insert(evalRuns).values(runRecord);
+      await logAudit(actor.uid, 'admin.run_evals', 'eval_run', runRecord.id, null, req);
       res.json({ evalRun: runRecord });
     } catch (error) {
       console.error('POST /api/admin/evals/run failed:', error);
@@ -2251,11 +3285,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get('*', (_req, res) => {
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
-        res.sendFile(indexFile);
+        const html = fs.readFileSync(indexFile, 'utf8');
+        const nonce = String(res.locals.cspNonce || '');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(injectNonceIntoHtml(html, nonce));
       } else {
         res.status(404).send('Build not found');
       }

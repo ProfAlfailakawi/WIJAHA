@@ -12,6 +12,7 @@ import {
   Search,
   Share2,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { ExpertBridgeCard, ResultBlockRenderer } from '../components/result-blocks/ResultBlocks';
@@ -43,6 +44,13 @@ interface ProjectVersionRow {
   payload: WijahaResult;
   changeSummary: string;
   diffSummary: string[];
+  createdAt: string;
+}
+
+interface ActiveShareRow {
+  id: string;
+  token: string;
+  expiresAt: string;
   createdAt: string;
 }
 
@@ -180,9 +188,11 @@ export function ProjectWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const { locale, t } = useI18n();
   const { getBearerHeaders } = useAuth();
+  const navigate = useNavigate();
 
   const [project, setProject] = useState<ProjectRow | null>(null);
   const [versions, setVersions] = useState<ProjectVersionRow[]>([]);
+  const [activeShares, setActiveShares] = useState<ActiveShareRow[]>([]);
   const [workingPayload, setWorkingPayload] = useState<WijahaResult | null>(null);
   const [workingTitle, setWorkingTitle] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -196,6 +206,9 @@ export function ProjectWorkspacePage() {
   const [smartInstruction, setSmartInstruction] = useState('');
   const [latestDiff, setLatestDiff] = useState<string[]>([]);
   const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
+  const [sharesDialogOpen, setSharesDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
@@ -221,9 +234,11 @@ export function ProjectWorkspacePage() {
         project: ProjectRow;
         currentVersion: ProjectVersionRow;
         versions: ProjectVersionRow[];
+        shares?: ActiveShareRow[];
       };
       setProject(data.project);
       setVersions(data.versions);
+      setActiveShares(data.shares || []);
       setWorkingPayload(data.currentVersion.payload);
       setWorkingTitle(data.project.title);
       setLatestDiff(data.currentVersion.diffSummary || []);
@@ -323,13 +338,49 @@ export function ProjectWorkspacePage() {
     const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/share`, {
       method: 'POST',
       credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
+      body: JSON.stringify({ expiresInDays: 30 }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { id: string; token: string; expiresAt: string };
+      const url = `${window.location.origin}/share/${data.token}`;
+      await navigator.clipboard.writeText(url).catch(() => undefined);
+      setActiveShares((prev) => [
+        { id: data.id, token: data.token, expiresAt: data.expiresAt, createdAt: new Date().toISOString() },
+        ...prev,
+      ]);
+      setSharesDialogOpen(true);
+      setToast(t.projects.shareCopied);
+    }
+  };
+
+  const handleRevokeShare = async (shareId: string) => {
+    const res = await fetch(`/api/shares/${encodeURIComponent(shareId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
       headers: getBearerHeaders(),
     });
     if (res.ok) {
-      const data = (await res.json()) as { token: string };
-      const url = `${window.location.origin}/share/${data.token}`;
-      await navigator.clipboard.writeText(url).catch(() => undefined);
-      setToast(t.projects.shareCopied);
+      setActiveShares((prev) => prev.filter((s) => s.id !== shareId));
+      setToast(t.projects.shareRevoked);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project) return;
+    setDeletingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: getBearerHeaders(),
+      });
+      if (res.ok) {
+        navigate('/projects');
+      }
+    } finally {
+      setDeletingProject(false);
+      setDeleteDialogOpen(false);
     }
   };
 
@@ -422,6 +473,17 @@ export function ProjectWorkspacePage() {
                     <Share2 className="w-3.5 h-3.5" />
                     <span>{t.result.actions.share}</span>
                   </Button>
+                  {activeShares.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setSharesDialogOpen(true)}
+                    >
+                      <span>
+                        {t.projects.activeShares} ({activeShares.length})
+                      </span>
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -439,6 +501,14 @@ export function ProjectWorkspacePage() {
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span>DOCX</span>
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    aria-label={t.projects.deleteProject}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>
               </div>
@@ -589,6 +659,59 @@ export function ProjectWorkspacePage() {
               </div>
             );
           })}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={sharesDialogOpen}
+        onClose={() => setSharesDialogOpen(false)}
+        title={t.projects.activeShares}
+      >
+        <div className="space-y-3">
+          {activeShares.map((sh) => (
+            <div
+              key={sh.id}
+              className="rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3.5 flex items-center justify-between gap-3"
+            >
+              <div className="space-y-1 min-w-0">
+                <p className="text-xs font-mono text-[var(--ink)] truncate">
+                  /share/{sh.token}
+                </p>
+                <p className="text-xs text-[var(--ink-3)] tabular-nums">
+                  {new Date(sh.expiresAt).toLocaleDateString(locale === 'ar' ? 'ar-KW' : 'en-US')}
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleRevokeShare(sh.id)}
+              >
+                {t.projects.revokeShare}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title={t.projects.deleteProject}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ink-2)]">{t.projects.deleteProjectConfirm}</p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteDialogOpen(false)}>
+              {t.auth.close}
+            </Button>
+            <Button
+              variant="primary"
+              loading={deletingProject}
+              onClick={() => void handleDeleteProject()}
+            >
+              {t.projects.deleteProject}
+            </Button>
+          </div>
         </div>
       </Dialog>
 

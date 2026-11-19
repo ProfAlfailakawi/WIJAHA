@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../../db/index.ts';
 import { authSessions, memberships, orgs, users } from '../../db/schema.ts';
-import { adminAuth } from '../../lib/firebase-admin.ts';
+import { getAdminAuth } from '../../lib/firebase-admin.ts';
 import { hashToken, type AuthActor, type OrgRole, type PlatformRole } from './rbac.ts';
 
 export const SESSION_COOKIE_NAME = 'wijaha_session';
@@ -110,12 +110,16 @@ export async function createSessionCookie(
 
 export async function resolveActorFromRequest(req: Request): Promise<AuthActor | null> {
   try {
-    // 1. Check Firebase Bearer token first if provided
+    // 1. Check Firebase Bearer token first if provided (checkRevoked = true, reject unverified password tokens — B6)
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const idToken = authHeader.slice(7).trim();
       if (idToken) {
-        const decoded = await adminAuth.verifyIdToken(idToken);
+        const decoded = await getAdminAuth().verifyIdToken(idToken, true);
+        const providerId = decoded.firebase?.sign_in_provider;
+        if (providerId === 'password' && decoded.email_verified !== true) {
+          return null;
+        }
         const synced = await getOrCreateUserWithWorkspace(
           decoded.uid,
           decoded.email || `${decoded.uid}@firebase.user`,
@@ -165,17 +169,40 @@ export async function resolveActorFromRequest(req: Request): Promise<AuthActor |
       .where(and(eq(memberships.userUid, u.uid), eq(memberships.orgId, sess.activeOrgId)))
       .limit(1);
 
-    const orgRole: OrgRole = (memRows[0]?.role as OrgRole) || 'member';
+    let effectiveOrgId = sess.activeOrgId;
+    let orgRole: OrgRole | null = (memRows[0]?.role as OrgRole | undefined) ?? null;
+
+    if (!orgRole) {
+      // Membership was revoked or does not exist — never default to 'member' (B4).
+      // Rebind session to another valid membership (e.g. personal workspace) if available, otherwise keep orgRole = null.
+      const fallbackMems = await db
+        .select()
+        .from(memberships)
+        .where(eq(memberships.userUid, u.uid))
+        .limit(1);
+
+      if (fallbackMems.length > 0) {
+        effectiveOrgId = fallbackMems[0].orgId;
+        orgRole = fallbackMems[0].role as OrgRole;
+        await db
+          .update(authSessions)
+          .set({ activeOrgId: effectiveOrgId })
+          .where(eq(authSessions.id, sess.id));
+      } else {
+        effectiveOrgId = '';
+        orgRole = null;
+      }
+    }
 
     return {
       uid: u.uid,
       email: u.email,
       name: u.name,
       platformRole: u.platformRole as PlatformRole,
-      activeOrgId: sess.activeOrgId,
+      activeOrgId: effectiveOrgId,
       orgRole,
       expertSuggestionsEnabled: u.expertSuggestionsEnabled,
-      mfaVerified: u.mfaVerified,
+      mfaVerified: Boolean(sess.mfaVerified || u.mfaVerified),
     };
   } catch (error) {
     console.error('resolveActorFromRequest error:', error);

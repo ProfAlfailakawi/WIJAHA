@@ -38,13 +38,22 @@ export function AboutPage() {
           </p>
         </header>
 
-        <div className="rounded-2xl border border-[var(--line)] overflow-hidden bg-[var(--surface)]">
+        <figure className="rounded-2xl border border-[var(--line)] overflow-hidden bg-[var(--surface)]">
           <ResilientImage
             src={BRAND.assets.vipDining}
-            alt="Formal VIP Dining Protocol"
+            alt={
+              locale === 'ar'
+                ? 'مشهد تمثيلي توضيحي لمأدبة رسمية ومخطط أسبقية'
+                : 'Illustrative editorial scene of formal diplomatic dining protocol'
+            }
             className="w-full h-64 sm:h-80"
           />
-        </div>
+          <figcaption className="px-4 py-2 text-[11px] text-[var(--ink-3)] border-t border-[var(--line)]">
+            {locale === 'ar'
+              ? 'مشهد تمثيلي توضيحي للضيافة والمراسم الرسمية.'
+              : 'Illustrative editorial representation of formal hospitality and protocol.'}
+          </figcaption>
+        </figure>
 
         <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-2">

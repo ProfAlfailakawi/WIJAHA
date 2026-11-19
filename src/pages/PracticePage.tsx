@@ -68,13 +68,22 @@ export function PracticeListPage() {
               {t.practice.subtitle}
             </p>
           </div>
-          <div className="md:col-span-5 min-h-[190px]">
+          <figure className="md:col-span-5 min-h-[190px] flex flex-col">
             <ResilientImage
               src={BRAND.assets.protocolSalon}
-              alt={t.practice.title}
-              className="w-full h-full max-h-[240px]"
+              alt={
+                locale === 'ar'
+                  ? 'مشهد تمثيلي توضيحي لاستقبال بروتوكولي'
+                  : 'Illustrative editorial protocol reception scene'
+              }
+              className="w-full flex-1 max-h-[220px]"
             />
-          </div>
+            <figcaption className="px-3 py-1.5 text-[11px] text-[var(--ink-3)] border-t border-[var(--line)]">
+              {locale === 'ar'
+                ? 'مشهد تمثيلي توضيحي للمحاكاة التطبيقية'
+                : 'Illustrative editorial simulation scene'}
+            </figcaption>
+          </figure>
         </section>
 
         {loading ? (

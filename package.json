@@ -15,7 +15,9 @@
     "evals": "tsx evals/run-evals.ts"
   },
   "dependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@google/genai": "^3.6.1",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/cookie-parser": "^1.4.10",
     "@types/pg": "^8.23.1",
@@ -31,6 +33,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "pg": "^8.23.1",
+    "pino": "^10.4.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-router-dom": "^7.18.6",

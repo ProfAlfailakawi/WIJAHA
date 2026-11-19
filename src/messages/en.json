@@ -130,7 +130,12 @@
     "updatePlanBtn": "Update Plan",
     "whatChanged": "What changed in this version:",
     "shareCopied": "Temporary share link copied to clipboard",
-    "addChecklistItem": "Add checklist item"
+    "addChecklistItem": "Add checklist item",
+    "deleteProject": "Delete Project",
+    "deleteProjectConfirm": "Move this project to trash and immediately revoke its share links?",
+    "activeShares": "Active Share Links",
+    "revokeShare": "Revoke link",
+    "shareRevoked": "Share link revoked immediately."
   },
   "practice": {
     "title": "Applied Protocol Simulations",
@@ -258,5 +263,25 @@
   "notFound": {
     "title": "This page could not be found",
     "subtitle": "Describe your occasion directly below and we will prepare what you need."
+  },
+  "errors": {
+    "unauthorized": "Please sign in to continue.",
+    "forbidden": "You do not have permission to perform this action.",
+    "invalidEmail": "Please enter a valid email address.",
+    "rateLimited": "Too many requests. Please wait a few minutes and try again.",
+    "invalidMagicCode": "Invalid or expired sign-in code.",
+    "magicNeutralSent": "If the email is valid, you will receive a sign-in code.",
+    "planLimitReached": "You have reached your current monthly plan allowance.",
+    "seatLimitReached": "Your organization has reached its maximum seat allowance.",
+    "projectsLimitReached": "You have reached the maximum saved projects for your current plan.",
+    "mfaRequired": "Multi-factor authentication (TOTP) is required before accessing the Admin console.",
+    "invalidRuleTransition": "This rule status transition is not permitted by the governance workflow.",
+    "costCapReached": "Daily AI usage budget has been reached temporarily. Please try again tomorrow.",
+    "validationError": "Please verify the submitted fields.",
+    "internalError": "An unexpected error occurred while processing your request."
+  },
+  "notices": {
+    "mockAiPreview": "Preview Mode: Results are generated from demo templates",
+    "unassessedCompetency": "Not assessed in this session"
   }
 }

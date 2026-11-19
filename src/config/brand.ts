@@ -9,10 +9,8 @@ export const BRAND = {
   trademarkStatusNoticeAr: 'اسم مبدئي — قيد مراجعة العلامة التجارية',
   trademarkStatusNoticeEn: 'Provisional brand name — subject to trademark review',
   assets: {
-    expertYousef: '/src/assets/images/expert_yousef_portrait_1795048910363.jpg',
-    expertAhmad: '/src/assets/images/expert_ahmad_portrait_1795048911990.jpg',
-    protocolSalon: '/src/assets/images/protocol_reception_editorial_1795048913215.jpg',
-    vipDining: '/src/assets/images/vip_dining_protocol_1795048914726.jpg',
+    protocolSalon: '/assets/images/protocol_reception_editorial_1795048913215.jpg',
+    vipDining: '/assets/images/vip_dining_protocol_1795048914726.jpg',
   },
   tokens: {
     light: {

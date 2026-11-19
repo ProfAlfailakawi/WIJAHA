@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Building2,
   Check,
@@ -71,7 +71,7 @@ export function PricingPage() {
 
   const handleSubscribe = async (plan: PlanItem) => {
     if (plan.isQuote) {
-      navigate('/request/SRV-CUSTOM-TRAINING');
+      navigate('/request/SRV-JOINT-ACADEMY');
       return;
     }
     if (!state.authenticated) {
@@ -86,13 +86,35 @@ export function PricingPage() {
         headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
         body: JSON.stringify({ planId: plan.id, billingCycle: cycle }),
       });
-      if (res.ok) {
-        await refreshAuth();
-        setToast(
-          locale === 'ar'
-            ? `تم تفعيل باقة «${plan.nameAr}» وإصدار الفاتورة.`
-            : `Activated ${plan.nameEn} plan and issued invoice.`,
-        );
+      if (!res.ok) {
+        setToast(res.status === 403 ? t.errors.forbidden : t.errors.serverError);
+        return;
+      }
+      const data = (await res.json()) as {
+        sessionId?: string;
+        checkoutUrl?: string;
+        provider?: 'mock' | 'stripe';
+      };
+
+      if (data.provider === 'mock' && data.sessionId) {
+        const completeRes = await fetch('/api/billing/dev-mock-complete', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
+          body: JSON.stringify({ sessionId: data.sessionId }),
+        });
+        if (completeRes.ok) {
+          await refreshAuth();
+          setToast(
+            locale === 'ar'
+              ? `تم تفعيل باقة «${plan.nameAr}» وإصدار الفاتورة.`
+              : `Activated ${plan.nameEn} plan and issued invoice.`,
+          );
+        } else {
+          setToast(t.errors.serverError);
+        }
+      } else if (data.checkoutUrl) {
+        window.location.assign(data.checkoutUrl);
       }
     } finally {
       setCheckingOutId(null);
@@ -589,7 +611,7 @@ export function OrgPage() {
 
   const [orgData, setOrgData] = useState<{
     org: { id: string; name: string; planId: string } | null;
-    members: Array<{ id: string; role: string; email: string; name: string }>;
+    members: Array<{ id: number; userUid: string; role: string; email: string; name: string }>;
     invitations: Array<{ id: string; email: string; role: string }>;
     seatsLimit: number;
   } | null>(null);
@@ -625,9 +647,17 @@ export function OrgPage() {
         body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
       });
       if (res.ok) {
+        const data = (await res.json()) as { inviteUrl?: string };
         setInviteEmail('');
+        if (data.inviteUrl) {
+          await navigator.clipboard.writeText(data.inviteUrl).catch(() => undefined);
+        }
         await loadOrg();
-        setToast(locale === 'ar' ? 'تم إرسال الدعوة وتسجيلها.' : 'Invitation created.');
+        setToast(
+          locale === 'ar'
+            ? 'تم إنشاء الدعوة ونسخ رابط القبول لمرة واحدة.'
+            : 'Invitation created and one-time accept link copied.',
+        );
       } else {
         setToast(
           locale === 'ar'
@@ -637,6 +667,20 @@ export function OrgPage() {
       }
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (targetUid: string) => {
+    const res = await fetch(`/api/org/members/${encodeURIComponent(targetUid)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: getBearerHeaders(),
+    });
+    if (res.ok) {
+      await loadOrg();
+      setToast(locale === 'ar' ? 'تمت إزالة العضو وإبطال جلسته.' : 'Member removed and session revoked.');
+    } else {
+      setToast(t.errors.forbidden);
     }
   };
 
@@ -716,9 +760,27 @@ export function OrgPage() {
                         {m.email}
                       </p>
                     </div>
-                    <span className="text-xs font-mono px-2.5 py-1 rounded bg-[var(--surface-2)] text-[var(--ink-2)]">
-                      {m.role}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono px-2.5 py-1 rounded bg-[var(--surface-2)] text-[var(--ink-2)]">
+                        {m.role}
+                      </span>
+                      {m.userUid !== state.actor?.uid &&
+                        (state.actor?.orgRole === 'org_owner' ||
+                          (state.actor?.orgRole === 'org_admin' && m.role !== 'org_owner')) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={
+                              locale === 'ar'
+                                ? `إزالة ${m.name}`
+                                : `Remove ${m.name}`
+                            }
+                            onClick={() => void handleRemoveMember(m.userUid)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-[var(--danger)]" />
+                          </Button>
+                        )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -732,3 +794,83 @@ export function OrgPage() {
     </AppShell>
   );
 }
+
+export function InviteAcceptPage() {
+  const { token } = useParams<{ token: string }>();
+  const { locale, t } = useI18n();
+  const { state, openSignInModal, getBearerHeaders, refreshAuth } = useAuth();
+  const navigate = useNavigate();
+
+  const [meta, setMeta] = useState<{
+    orgId: string;
+    orgName: string;
+    emailHint: string;
+    role: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [accepting, setAccepting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    setLoading(true);
+    fetch(`/api/invitations/${encodeURIComponent(token)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('invalid');
+        setMeta(await res.json());
+      })
+      .catch(() => setErrorMsg(t.notFound.title))
+      .finally(() => setLoading(false));
+  }, [token, t.notFound.title]);
+
+  const handleAccept = async () => {
+    if (!token) return;
+    setAccepting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/invitations/${encodeURIComponent(token)}/accept`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: getBearerHeaders(),
+      });
+      if (!res.ok) {
+        setErrorMsg(res.status === 403 ? t.errors.forbidden : t.notFound.title);
+        return;
+      }
+      await refreshAuth();
+      navigate('/org');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  return (
+    <AppShell>
+      <div className="max-w-xl w-full mx-auto px-4 sm:px-6 py-12 space-y-6">
+        <h1 className="text-2xl font-bold text-[var(--ink)]">{t.org.title}</h1>
+        {loading && <Skeleton className="h-32 w-full" />}
+        {errorMsg && <EmptyState title={errorMsg} />}
+        {meta && !errorMsg && (
+          <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-4">
+            <div className="space-y-1">
+              <p className="text-base font-bold text-[var(--ink)]">{meta.orgName}</p>
+              <p className="text-xs text-[var(--ink-3)]" dir="ltr">
+                {meta.emailHint} · {meta.role}
+              </p>
+            </div>
+            {!state.authenticated ? (
+              <Button variant="primary" onClick={() => openSignInModal()}>
+                {t.nav.signIn}
+              </Button>
+            ) : (
+              <Button variant="primary" loading={accepting} onClick={() => void handleAccept()}>
+                {locale === 'ar' ? 'قبول الدعوة والانضمام' : 'Accept Invitation & Join'}
+              </Button>
+            )}
+          </section>
+        )}
+      </div>
+    </AppShell>
+  );
+}
+

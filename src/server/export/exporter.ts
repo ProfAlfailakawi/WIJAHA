@@ -11,10 +11,12 @@ import {
   Paragraph,
   TextRun,
 } from 'docx';
+import { z } from 'zod';
 import { BRAND } from '../../config/brand.ts';
 import type { WijahaResult } from '../../shared/types.ts';
 
 const execFileAsync = promisify(execFile);
+const ExportLocaleSchema = z.enum(['ar', 'en']);
 
 function escapeHtml(raw: string): string {
   return raw
@@ -32,7 +34,8 @@ export async function generateProjectDocx(params: {
   watermarked: boolean;
 }): Promise<Buffer> {
   const { result, versionNumber, orgName, watermarked } = params;
-  const isAr = result.locale === 'ar';
+  const safeLocale = ExportLocaleSchema.parse(result.locale);
+  const isAr = safeLocale === 'ar';
   const align = isAr ? AlignmentType.RIGHT : AlignmentType.LEFT;
 
   const paragraphs: Paragraph[] = [];
@@ -333,7 +336,8 @@ export function buildOfficialPrintHtml(params: {
   watermarked: boolean;
 }): string {
   const { result, versionNumber, orgName, watermarked } = params;
-  const isAr = result.locale === 'ar';
+  const safeLocale = ExportLocaleSchema.parse(result.locale);
+  const isAr = safeLocale === 'ar';
   const dir = isAr ? 'rtl' : 'ltr';
 
   const blocksHtml = result.blocks
@@ -399,7 +403,7 @@ export function buildOfficialPrintHtml(params: {
     .join('\n');
 
   return `<!doctype html>
-<html lang="${result.locale}" dir="${dir}">
+<html lang="${safeLocale}" dir="${dir}">
 <head>
 <meta charset="utf-8" />
 <title>${escapeHtml(result.title)}</title>
@@ -476,10 +480,13 @@ export async function generateProjectPdfOrHtml(params: {
           '--headless',
           '--no-sandbox',
           '--disable-gpu',
+          '--disable-dev-shm-usage',
+          '--disable-extensions',
+          '--js-flags=--max-old-space-size=256',
           `--print-to-pdf=${pdfFile}`,
           `file://${htmlFile}`,
         ],
-        { timeout: 12000 },
+        { timeout: 10_000 },
       );
       if (fs.existsSync(pdfFile)) {
         const pdfBuf = fs.readFileSync(pdfFile);

@@ -46,6 +46,7 @@ export interface AuthMeState {
   };
   recentProjects?: Array<{ id: string; title: string }>;
   aiMode?: string;
+  demoLoginEnabled?: boolean;
 }
 
 interface AuthContextValue {
@@ -128,6 +129,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = useCallback(async (): Promise<boolean> => {
+    if (!auth || !googleAuthProvider) {
+      return false;
+    }
     try {
       const cred = await signInWithPopup(auth, googleAuthProvider);
       const idToken = await cred.user.getIdToken();
@@ -211,7 +215,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     memoryIdTokenRef.current = null;
     try {
-      await auth.signOut().catch(() => undefined);
+      if (auth) {
+        await auth.signOut().catch(() => undefined);
+      }
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } finally {
       setState({ authenticated: false, actor: null });

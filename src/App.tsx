@@ -17,6 +17,7 @@ import {
 } from './pages/PracticePage';
 import {
   AccountPage,
+  InviteAcceptPage,
   OrgPage,
   PricingPage,
 } from './pages/PricingAndAccountPages';
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="/org" element={<OrgPage />} />
+            <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
             <Route path="/about" element={<AboutPage />} />
             <Route path="/methodology" element={<MethodologyPage />} />

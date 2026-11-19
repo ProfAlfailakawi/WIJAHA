@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, CheckCircle2, Clock, Sparkles, UserCheck } from 'lucide-react';
-import { BRAND } from '../config/brand';
 import { AppShell } from '../components/layout/AppShell';
 import {
   Button,
@@ -42,10 +41,19 @@ interface ServiceRecord {
   priceAmountKwd: number | null;
 }
 
-function resolveExpertPortrait(slugOrUrl: string): string {
-  if (slugOrUrl.includes('yousef')) return BRAND.assets.expertYousef;
-  if (slugOrUrl.includes('ahmad')) return BRAND.assets.expertAhmad;
-  return slugOrUrl;
+function getExpertInitials(nameAr: string, nameEn: string, locale: 'ar' | 'en'): string {
+  const raw = (locale === 'ar' ? nameAr : nameEn)
+    .replace(/^(د\.|أ\.د\.|Dr\.|Prof\.)\s*/i, '')
+    .trim();
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    if (locale === 'ar') {
+      const cleanSecond = parts[parts.length - 1].replace(/^ال/, '');
+      return `${parts[0][0]} ${cleanSecond[0] || parts[parts.length - 1][0]}`;
+    }
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return (raw.slice(0, 2) || (locale === 'ar' ? 'خب' : 'EX')).toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -96,9 +104,9 @@ export function ExpertsListPage() {
                   <div className="space-y-4">
                     <div className="flex items-start gap-4">
                       <ResilientImage
-                        src={resolveExpertPortrait(ex.slug)}
+                        src={ex.avatarUrl || ''}
                         alt={locale === 'ar' ? ex.nameAr : ex.nameEn}
-                        fallbackInitials={locale === 'ar' ? 'خبير' : 'EXP'}
+                        fallbackInitials={getExpertInitials(ex.nameAr, ex.nameEn, locale)}
                         className="w-20 h-20 rounded-xl border border-[var(--line)] shrink-0"
                       />
                       <div className="space-y-1">
@@ -241,8 +249,9 @@ export function ExpertDetailPage() {
           <>
             <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 sm:p-8 flex flex-col sm:flex-row items-start gap-6">
               <ResilientImage
-                src={resolveExpertPortrait(expert.slug)}
+                src={expert.avatarUrl || ''}
                 alt={locale === 'ar' ? expert.nameAr : expert.nameEn}
+                fallbackInitials={getExpertInitials(expert.nameAr, expert.nameEn, locale)}
                 className="w-28 h-28 rounded-2xl border border-[var(--line)] shrink-0"
               />
               <div className="space-y-3">
@@ -312,7 +321,7 @@ export function ServiceRequestPage() {
   const trigger = searchParams.get('trigger') || 'direct';
 
   const { locale, t } = useI18n();
-  const { state, getBearerHeaders } = useAuth();
+  const { state, openSignInModal, getBearerHeaders } = useAuth();
 
   const [service, setService] = useState<ServiceRecord | null>(null);
   const [name, setName] = useState(state.actor?.name || '');
@@ -320,6 +329,7 @@ export function ServiceRequestPage() {
   const [notes, setNotes] = useState('');
   const [shareContext, setShareContext] = useState(Boolean(projectId));
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [ticketId, setTicketId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -338,10 +348,10 @@ export function ServiceRequestPage() {
       });
   }, [serviceId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitRequestFlow = async () => {
     if (!serviceId) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
       const res = await fetch('/api/service-requests', {
         method: 'POST',
@@ -357,13 +367,46 @@ export function ServiceRequestPage() {
           clientNotes: notes.trim(),
         }),
       });
-      if (res.ok) {
-        const data = (await res.json()) as { id: string };
+      if (res.status === 401) {
+        openSignInModal(() => void submitRequestFlow());
+        return;
+      }
+      if (!res.ok) {
+        setSubmitError(res.status === 403 ? t.errors.forbidden : t.errors.serverError);
+        return;
+      }
+      const data = (await res.json()) as {
+        id: string;
+        checkoutSessionId?: string;
+        checkoutUrl?: string;
+        provider?: 'mock' | 'stripe';
+      };
+
+      if (data.checkoutSessionId && data.provider === 'mock') {
+        await fetch('/api/billing/dev-mock-complete', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...getBearerHeaders() },
+          body: JSON.stringify({ sessionId: data.checkoutSessionId }),
+        });
+        setTicketId(data.id);
+      } else if (data.checkoutUrl && data.checkoutUrl.startsWith('https://')) {
+        window.location.assign(data.checkoutUrl);
+      } else {
         setTicketId(data.id);
       }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!state.authenticated) {
+      openSignInModal(() => void submitRequestFlow());
+      return;
+    }
+    await submitRequestFlow();
   };
 
   return (
@@ -399,6 +442,7 @@ export function ServiceRequestPage() {
             onSubmit={(e) => void handleSubmit(e)}
             className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-4"
           >
+            {submitError && <ErrorBanner message={submitError} />}
             {service?.pricingType === 'fixed' && (
               <div className="rounded-lg bg-[var(--surface-2)] p-3.5 text-xs text-[var(--ink-2)] flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[var(--gold-ink)] shrink-0" />

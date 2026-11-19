@@ -20,6 +20,7 @@ import { Button, Dialog, OfflineBanner, WijahaEmblem } from '../ui/Primitives';
 export function SignInModal() {
   const { t, locale } = useI18n();
   const {
+    state,
     signInModalOpen,
     closeSignInModal,
     signInWithGoogle,
@@ -66,8 +67,8 @@ export function SignInModal() {
     if (!ok) {
       setErrorMsg(
         locale === 'ar'
-          ? 'تعذّر إكمال نافذة Google في هذه المعاينة. يمكنك استخدام الرمز السحري أو الحسابات التجريبية أدناه.'
-          : 'Google popup could not complete here. Use Magic Code or instant preview accounts below.',
+          ? 'تعذّر إكمال نافذة Google في هذه البيئة. يمكنك استخدام رمز البريد الإلكتروني.'
+          : 'Google popup could not complete here. Please use Email Code sign-in.',
       );
     }
   };
@@ -181,27 +182,29 @@ export function SignInModal() {
           )}
         </div>
 
-        <div className="border-t border-[var(--line)] pt-4">
-          <p className="text-xs font-medium text-[var(--ink-3)] mb-2.5">{t.auth.demoTitle}</p>
-          <div className="grid grid-cols-1 gap-2">
-            {demoAccounts.map((acc) => (
-              <button
-                key={acc.email}
-                type="button"
-                disabled={busy}
-                onClick={() => void handleDemo(acc.email)}
-                className="min-h-[42px] w-full text-start px-3.5 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--bg)] transition-colors text-xs text-[var(--ink)] flex items-center justify-between gap-2 cursor-pointer"
-              >
-                <span className="font-medium">
-                  {locale === 'ar' ? acc.labelAr : acc.labelEn}
-                </span>
-                <span className="text-[var(--ink-3)] font-mono text-[11px]" dir="ltr">
-                  {acc.email}
-                </span>
-              </button>
-            ))}
+        {state.demoLoginEnabled === true && (
+          <div className="border-t border-[var(--line)] pt-4">
+            <p className="text-xs font-medium text-[var(--ink-3)] mb-2.5">{t.auth.demoTitle}</p>
+            <div className="grid grid-cols-1 gap-2">
+              {demoAccounts.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleDemo(acc.email)}
+                  className="min-h-[42px] w-full text-start px-3.5 py-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] hover:bg-[var(--bg)] transition-colors text-xs text-[var(--ink)] flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <span className="font-medium">
+                    {locale === 'ar' ? acc.labelAr : acc.labelEn}
+                  </span>
+                  <span className="text-[var(--ink-3)] font-mono text-[11px]" dir="ltr">
+                    {acc.email}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </Dialog>
   );
@@ -222,7 +225,7 @@ export function AppShell({
 
   const isAdminActor =
     state.actor &&
-    ['platform_admin', 'senior_reviewer', 'protocol_reviewer', 'content_editor', 'expert_partner'].includes(
+    ['platform_admin', 'senior_reviewer', 'protocol_reviewer', 'content_editor', 'expert', 'expert_partner'].includes(
       state.actor.platformRole,
     );
 
