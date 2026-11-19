@@ -100,7 +100,7 @@ export async function understandQuery(
 ): Promise<ExtractedEntities & { understoodBy: 'model' | 'rules' }> {
   const normalized = normalizeNumerals(rawQuery);
   const rules = analyzeIntentAndContextPure(normalized);
-  if (getAiProviderStatus().mode !== 'gemini') {
+  if (getAiProviderStatus().mode === 'mock') {
     return { ...rules, understoodBy: 'rules' };
   }
   try {

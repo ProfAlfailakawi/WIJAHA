@@ -807,7 +807,7 @@ export async function executeWijahaPipeline(params: {
 
   // Try optional live Gemini generation if configured; otherwise build rich deterministic blocks from retrievedRules
   const providerStatus = getAiProviderStatus();
-  if (providerStatus.mode === 'gemini') {
+  if (providerStatus.mode !== 'mock') {
     try {
       const geminiCandidate = await callGeminiJson<Partial<WijahaResult>>({
         locale,
