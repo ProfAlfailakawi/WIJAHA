@@ -2,10 +2,15 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import type { Locale } from '../../shared/types.ts';
 
 export interface AiProviderStatus {
-  mode: 'mock' | 'gemini';
+  mode: 'mock' | 'gemini' | 'claude';
   intentModel: string;
   generateModel: string;
   embedModel: string;
+}
+
+function shouldUseClaude(): boolean {
+  if ((process.env.AI_PROVIDER || '').toLowerCase() !== 'claude') return false;
+  return (process.env.ANTHROPIC_API_KEY || '').trim().length >= 20;
 }
 
 function shouldUseGemini(): boolean {
@@ -20,9 +25,13 @@ function shouldUseGemini(): boolean {
 
 export function getAiProviderStatus(): AiProviderStatus {
   return {
-    mode: shouldUseGemini() ? 'gemini' : 'mock',
-    intentModel: process.env.AI_MODEL_INTENT || 'gemini-4-hydrogen',
-    generateModel: process.env.AI_MODEL_GENERATE || 'gemini-4-hydrogen',
+    mode: shouldUseClaude() ? 'claude' : shouldUseGemini() ? 'gemini' : 'mock',
+    intentModel: shouldUseClaude()
+      ? process.env.CLAUDE_MODEL_FAST || 'claude-haiku-5-5'
+      : process.env.AI_MODEL_INTENT || 'gemini-4-hydrogen',
+    generateModel: shouldUseClaude()
+      ? process.env.CLAUDE_MODEL_GENERATE || 'claude-sonnet-5-5'
+      : process.env.AI_MODEL_GENERATE || 'gemini-4-hydrogen',
     embedModel: process.env.AI_MODEL_EMBED || 'gemini-embedding-2',
   };
 }
@@ -54,6 +63,9 @@ export async function callGeminiJson<T>(params: {
   fast?: boolean;
   timeoutMs?: number;
 }): Promise<T | null> {
+  if (shouldUseClaude()) {
+    return callClaudeJson<T>(params);
+  }
   if (!shouldUseGemini()) {
     return null;
   }
@@ -80,6 +92,42 @@ export async function callGeminiJson<T>(params: {
   return JSON.parse(text) as T;
 }
 
+/** Claude via the Messages API (plain fetch, no extra dependency). */
+async function callClaudeJson<T>(params: {
+  systemInstruction: string;
+  userPrompt: string;
+  fast?: boolean;
+  timeoutMs?: number;
+}): Promise<T | null> {
+  const model = params.fast
+    ? process.env.CLAUDE_MODEL_FAST || 'claude-haiku-5-5'
+    : process.env.CLAUDE_MODEL_GENERATE || 'claude-sonnet-5-5';
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY as string,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: params.fast ? 1024 : 4096,
+      system: `${params.systemInstruction}\n\nRespond with a single valid JSON object only: no prose, no markdown fences.`,
+      messages: [{ role: 'user', content: params.userPrompt }],
+    }),
+    signal: AbortSignal.timeout(params.timeoutMs ?? (params.fast ? 8000 : 40000)),
+  });
+  if (!res.ok) {
+    throw new Error(`Claude API error ${res.status}`);
+  }
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const text = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  return JSON.parse(text.slice(start, end + 1)) as T;
+}
+
 export const EMBEDDING_DIMENSIONS = 768;
 
 /**
@@ -87,7 +135,7 @@ export const EMBEDDING_DIMENSIONS = 768;
  * Returns null when no live provider is configured, so callers can fall back to lexical retrieval.
  */
 export async function embedTexts(texts: string[]): Promise<number[][] | null> {
-  if (!shouldUseGemini() || texts.length === 0) return null;
+  if (shouldUseClaude() || !shouldUseGemini() || texts.length === 0) return null;
   const ai = getGeminiClient();
   const response = await ai.models.embedContent({
     model: process.env.AI_MODEL_EMBED || 'gemini-embedding-2',
