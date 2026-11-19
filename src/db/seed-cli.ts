@@ -21,13 +21,13 @@ async function main() {
 
   if (!isProd) {
     await seedDemoData();
-    const goldenDir = path.resolve(process.cwd(), 'evals/golden');
+    const goldenDir = path.resolve(process.cwd(), 'evals/dev');
     fs.mkdirSync(goldenDir, { recursive: true });
     const jsonlPath = path.join(goldenDir, 'demo-60.jsonl');
     const lines = SEED_EVAL_CASES.map((c) => JSON.stringify({ ...c, demo: true })).join('\n') + '\n';
     fs.writeFileSync(jsonlPath, lines, 'utf8');
     console.log(
-      `Seeded reference + demo data & wrote ${SEED_EVAL_CASES.length} golden cases to evals/golden/demo-60.jsonl`,
+      `Seeded reference + demo data & wrote ${SEED_EVAL_CASES.length} golden cases to evals/dev/demo-60.jsonl`,
     );
   } else {
     console.log('Seeded reference catalog data only (production mode — zero demo users/orgs).');

@@ -10,3 +10,4 @@ firebase-applet-config.json
 .playwright-cli/
 playwright-report/
 test-results/
+evals/last-run.json
