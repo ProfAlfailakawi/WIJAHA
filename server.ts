@@ -51,6 +51,7 @@ import {
   executeWijahaPipeline,
 } from './src/server/ai/pipeline.ts';
 import { getAiProviderStatus } from './src/server/ai/provider.ts';
+import { understandQuery } from './src/server/ai/understanding.ts';
 import {
   canAccessResultRecord,
   canAccessSimulationRun,
@@ -105,6 +106,7 @@ import {
 import {
   detectSimilarRules,
   retrieveHybridRules,
+  embedAndStoreRule,
   scoreRulesPure,
 } from './src/server/knowledge/retrieval.ts';
 import {
@@ -1084,7 +1086,7 @@ export async function buildExpressApp() {
 
       // Stage 1-2: Understanding intent & entities
       sendSse('stage', { stage: 'understanding' });
-      const entities = analyzeIntentAndContextPure(query);
+      const entities = await understandQuery(query, locale);
 
       // Stage 4: Hybrid Retrieval
       sendSse('stage', { stage: 'retrieving' });
@@ -1264,7 +1266,7 @@ export async function buildExpressApp() {
         ? `${currentPayload.title} — ${followupText}`
         : `${currentPayload.title} ${clarificationAnswer || ''}`;
 
-      const entities = analyzeIntentAndContextPure(syntheticQuery);
+      const entities = await understandQuery(syntheticQuery, currentPayload.locale ?? 'ar');
       entities.intent = followupText ? entities.intent : currentPayload.intent;
       if (req.body?.elevateToHighSensitivity === true) {
         entities.sensitivity = 'high';
@@ -2939,6 +2941,10 @@ export async function buildExpressApp() {
             updatedAt: new Date(),
           },
         });
+      // E2: index the new rule semantically in the background; lexical search still works if this fails.
+      void embedAndStoreRule({ id, titleAr, titleEn, bodyAr, bodyEn }).catch((err) =>
+        console.warn('embedAndStoreRule failed:', (err as Error).message),
+      );
 
       await db.insert(knowledgeRuleVersions).values({
         ruleId: id,
@@ -3210,7 +3216,7 @@ export async function buildExpressApp() {
       const validIdSet = new Set(rules.map((r) => r.id));
 
       for (const c of cases) {
-        const entities = analyzeIntentAndContextPure(c.queryText);
+        const entities = await understandQuery(c.queryText, (c.locale as 'ar' | 'en') ?? 'ar');
         if (entities.intent === c.expectedIntent) intentHits += 1;
 
         const retrieved = scoreRulesPure(rules, {
