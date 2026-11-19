@@ -26,9 +26,18 @@
       "An academic delegation from Poland is visiting to sign an MoU"
     ],
     "examples": [
-      { "label": "Formal dinner", "query": "I have a formal business dinner, how should I prepare and behave?" },
-      { "label": "Host a delegation", "query": "We are hosting a VIP delegation from China tomorrow at our restaurant, what do we prepare?" },
-      { "label": "Business trip abroad", "query": "We are visiting business partners in Warsaw, Poland — what protocol preparation do we need?" }
+      {
+        "label": "Formal dinner",
+        "query": "I have a formal business dinner, how should I prepare and behave?"
+      },
+      {
+        "label": "Host a delegation",
+        "query": "We are hosting a VIP delegation from China tomorrow at our restaurant, what do we prepare?"
+      },
+      {
+        "label": "Business trip abroad",
+        "query": "We are visiting business partners in Warsaw, Poland — what protocol preparation do we need?"
+      }
     ],
     "sendAria": "Submit occasion",
     "charLimit": "Maximum 2,000 characters",
@@ -213,16 +222,29 @@
     "excludedLabel": "Not included:",
     "faqTitle": "Billing, Cancellation & Data Ownership",
     "faqs": [
-      { "q": "How do I cancel my subscription?", "a": "Cancel in two clicks from your Account page with zero mandatory calls or surveys; access continues until the end of your billing period." },
-      { "q": "What happens if I reach my monthly limit?", "a": "We never interrupt an in-progress result. You will see a calm notice with your reset date and an optional one-step upgrade." },
-      { "q": "What happens to my projects and data if I cancel or delete my account?", "a": "Export your full data archive as JSON or PDF/DOCX anytime. Account deletion requests include a 14-day recovery window before permanent purge." }
+      {
+        "q": "How do I cancel my subscription?",
+        "a": "Cancel in two clicks from your Account page with zero mandatory calls or surveys; access continues until the end of your billing period."
+      },
+      {
+        "q": "What happens if I reach my monthly limit?",
+        "a": "We never interrupt an in-progress result. You will see a calm notice with your reset date and an optional one-step upgrade."
+      },
+      {
+        "q": "What happens to my projects and data if I cancel or delete my account?",
+        "a": "Export your full data archive as JSON or PDF/DOCX anytime. Account deletion requests include a 14-day recovery window before permanent purge."
+      }
     ]
   },
   "account": {
     "title": "Account, Subscription & Privacy",
     "language": "Interface Language",
     "theme": "Visual Appearance",
-    "themes": { "light": "Light (Ivory)", "dark": "Dark (Midnight Navy)", "system": "System" },
+    "themes": {
+      "light": "Light (Ivory)",
+      "dark": "Dark (Midnight Navy)",
+      "system": "System"
+    },
     "expertToggle": "Show contextual specialist review suggestions on sensitive occasions",
     "usageTitle": "Current Monthly Allowance",
     "cancelSub": "Cancel Subscription Renewal",
@@ -278,7 +300,9 @@
     "invalidRuleTransition": "This rule status transition is not permitted by the governance workflow.",
     "costCapReached": "Daily AI usage budget has been reached temporarily. Please try again tomorrow.",
     "validationError": "Please verify the submitted fields.",
-    "internalError": "An unexpected error occurred while processing your request."
+    "internalError": "An unexpected error occurred while processing your request.",
+    "badRequest": "The request is invalid. Check the details and try again.",
+    "serverError": "Something went wrong on our side. Please try again shortly."
   },
   "notices": {
     "mockAiPreview": "Preview Mode: Results are generated from demo templates",

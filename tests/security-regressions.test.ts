@@ -594,7 +594,7 @@ test('B4: removed org member loses access immediately without waiting for sessio
 });
 
 test('B5: production startup fails fast when FIELD_ENCRYPTION_KEY or IP_HASH_SALT is missing, and key rotation decrypts prior versions', async () => {
-  const envCopy = { ...process.env, NODE_ENV: 'production' };
+  const envCopy: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'production' };
   delete envCopy.FIELD_ENCRYPTION_KEY;
   delete envCopy.IP_HASH_SALT;
 
@@ -670,7 +670,7 @@ test('C1: simulation step and report enforce session ownership', async () => {
     // Complete run as User A and verify User B cannot read report
     let nodeCursor: string | undefined = currentNodeId;
     for (let i = 0; i < 6 && nodeCursor; i++) {
-      const st = await fetch(`${srv.baseUrl}/api/simulations/${runId}/step`, {
+      const st: Response = await fetch(`${srv.baseUrl}/api/simulations/${runId}/step`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Cookie: cookieA },
         body: JSON.stringify({
@@ -1143,12 +1143,13 @@ test('C12: exporter rejects malicious non-enum locale injection', async () => {
           title: 'Test',
           locale: 'ar" onload="alert(1)' as unknown as 'ar',
           intent: 'etiquette_personal',
-          context: {},
+          context: [],
           assumptions: [],
           summary: ['نقطة'],
-          primaryAction: { label: 'حفظ', action: 'save_project' },
+          primaryAction: { label: 'حفظ', id: 'save_project' },
+          secondaryActions: [],
           blocks: [],
-          trust: { sensitivity: 'low', ruleIds: [], hasDemoRules: true, unreviewedClaims: 0 },
+          trust: { sensitivity: 'low', ruleIds: [], reviewedCount: 0, demoCount: 0, unreviewedClaims: 0 },
         },
         versionNumber: 1,
         watermarked: false,

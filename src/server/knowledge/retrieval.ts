@@ -1,4 +1,5 @@
-import { inArray } from 'drizzle-orm';
+import { and, cosineDistance, inArray, isNotNull, sql } from 'drizzle-orm';
+import { embedTexts } from '../ai/provider.ts';
 import { db } from '../../db/index.ts';
 import { knowledgeRules, synonyms } from '../../db/schema.ts';
 import {
@@ -174,10 +175,7 @@ export async function retrieveHybridRules(params: {
   try {
     // Section 12.2: Never include unapproved draft/in_review/deprecated rules!
     // Only 'approved' (and 'draft_demo' in non-production preview environments).
-    const allowedStatuses =
-      process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_RULES !== 'true'
-        ? ['approved', 'draft_demo'] // Preview deploy still shows marked demo rules until 300 real rules are authored
-        : ['approved', 'draft_demo'];
+    const allowedStatuses = allowedRuleStatuses();
 
     const [eligibleRules, dbSynonyms] = await Promise.all([
       db
@@ -195,10 +193,25 @@ export async function retrieveHybridRules(params: {
       topic: s.topic,
     }));
 
-    return scoreRulesPure(eligibleRules, {
+    const lexical = scoreRulesPure(eligibleRules, {
       ...params,
       extraSynonyms: mappedSynonyms,
     });
+
+    // E2: semantic candidates from pgvector, fused with the lexical ranking (Reciprocal Rank Fusion).
+    const semanticIds = await semanticRuleIds(params.query, allowedStatuses).catch((err) => {
+      console.warn('semantic retrieval unavailable, using lexical only:', (err as Error).message);
+      return [] as string[];
+    });
+    if (semanticIds.length === 0) return lexical;
+
+    const topK = params.topK ?? 10;
+    const fullLexical = scoreRulesPure(eligibleRules, {
+      ...params,
+      topK: eligibleRules.length,
+      extraSynonyms: mappedSynonyms,
+    });
+    return fuseRankingsPure(fullLexical, semanticIds, topK);
   } catch (error) {
     console.error('retrieveHybridRules failed:', error);
     throw new Error('Failed to retrieve protocol knowledge rules.', { cause: error });
@@ -236,4 +249,46 @@ export async function detectSimilarRules(input: {
     console.error('detectSimilarRules failed:', error);
     return [];
   }
+}
+
+/** Production serves approved rules only; demo rules need an explicit opt-in (previously both branches were identical). */
+export function allowedRuleStatuses(): string[] {
+  const isProd = process.env.NODE_ENV === 'production';
+  return !isProd || process.env.ALLOW_DEMO_RULES === 'true' ? ['approved', 'draft_demo'] : ['approved'];
+}
+
+async function semanticRuleIds(query: string, statuses: string[], limit = 20): Promise<string[]> {
+  const vectors = await embedTexts([query]);
+  if (!vectors) return [];
+  const distance = cosineDistance(knowledgeRules.embeddingVec, vectors[0]);
+  const rows = await db
+    .select({ id: knowledgeRules.id, distance })
+    .from(knowledgeRules)
+    .where(and(inArray(knowledgeRules.status, statuses), isNotNull(knowledgeRules.embeddingVec)))
+    .orderBy(distance)
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/** Reciprocal Rank Fusion of a lexical ranking and a semantic ranking (k = 60). Pure for testing. */
+export function fuseRankingsPure(lexical: RetrievedRule[], semanticIds: string[], topK: number): RetrievedRule[] {
+  const K = 60;
+  const fused = new Map<string, number>();
+  lexical.forEach((r, i) => fused.set(r.id, (fused.get(r.id) ?? 0) + 1 / (K + i + 1)));
+  semanticIds.forEach((id, i) => fused.set(id, (fused.get(id) ?? 0) + 1 / (K + i + 1)));
+  const byId = new Map(lexical.map((r) => [r.id, r]));
+  return [...fused.entries()]
+    .filter(([id]) => byId.has(id))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topK)
+    .map(([id, score]) => ({ ...byId.get(id)!, score }));
+}
+
+/** Embeds a rule's bilingual text and stores it in embedding_vec. No-op without a live provider. */
+export async function embedAndStoreRule(rule: { id: string; titleAr: string; titleEn: string; bodyAr: string; bodyEn: string }): Promise<boolean> {
+  const text = `${rule.titleAr}\n${rule.bodyAr}\n${rule.titleEn}\n${rule.bodyEn}`;
+  const vectors = await embedTexts([text]);
+  if (!vectors) return false;
+  await db.execute(sql`UPDATE knowledge_rules SET embedding_vec = ${JSON.stringify(vectors[0])}::vector WHERE id = ${rule.id}`);
+  return true;
 }

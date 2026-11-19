@@ -72,6 +72,16 @@ export function evaluateFreeTextStepPure(
   };
 }
 
+const COMPETENCY_NAMES: Record<CompetencyCode, { ar: string; en: string }> = {
+  C1: { ar: 'الاستقبال والتوديع', en: 'Reception & farewell' },
+  C2: { ar: 'الأسبقية والجلوس', en: 'Precedence & seating' },
+  C3: { ar: 'الضيافة وآداب المائدة', en: 'Hospitality & dining' },
+  C4: { ar: 'التواصل بين الثقافات', en: 'Cross-cultural communication' },
+  C5: { ar: 'المراسلات الرسمية', en: 'Official correspondence' },
+  C6: { ar: 'المواقف الطارئة', en: 'Handling the unexpected' },
+  C7: { ar: 'التخطيط والتنسيق', en: 'Planning & coordination' },
+};
+
 export function buildSimulationReportPure(params: {
   runId: string;
   scenarioId: string;
@@ -117,27 +127,47 @@ export function buildSimulationReportPure(params: {
     };
   });
 
+  // D2: every strength/gap names its competency and cites what actually happened in this session.
+  const bestStepFor = (comp: CompetencyCode) =>
+    [...params.steps]
+      .filter((st) => st.scores[comp] !== undefined)
+      .sort((a, b) => (b.scores[comp] ?? 0) - (a.scores[comp] ?? 0))[0];
+  const worstStepFor = (comp: CompetencyCode) =>
+    [...params.steps]
+      .filter((st) => st.scores[comp] !== undefined)
+      .sort((a, b) => (a.scores[comp] ?? 0) - (b.scores[comp] ?? 0))[0];
+
   const sorted = [...competencyBreakdown].sort((a, b) => b.pct - a.pct);
   const strengths = sorted
     .filter((x) => x.pct >= 60)
     .slice(0, 2)
-    .map((x) => ({
-      competency: x.competency,
-      noteAr: `أداء متماسك في هذه الكفاية بنسبة تحقق ${x.pct}% وفق معيار التقييم.`,
-      noteEn: `Composed execution in this competency (${x.pct}% rubric attainment).`,
-    }));
+    .map((x) => {
+      const names = COMPETENCY_NAMES[x.competency];
+      const step = bestStepFor(x.competency);
+      return {
+        competency: x.competency,
+        noteAr: `${names.ar}: ${x.pct}% من معيار التقييم.${step ? ` ${step.feedbackAr}` : ''}`,
+        noteEn: `${names.en}: ${x.pct}% of the rubric.${step ? ` ${step.feedbackEn}` : ''}`,
+        ruleIds: step?.ruleIds ?? [],
+      };
+    });
 
   const gaps = [...competencyBreakdown]
     .sort((a, b) => a.pct - b.pct)
     .filter((x) => x.pct < 85)
     .slice(0, 2)
-    .map((x) => ({
-      competency: x.competency,
-      noteAr: `فرصة لتعزيز الدقة البروتوكولية في ${x.competency} (${x.pct}%).`,
-      noteEn: `Opportunity to sharpen protocol precision in ${x.competency} (${x.pct}%).`,
-      exampleAr: 'راجع تفاصيل إشعار المضيف وتوثيق المتغيرات الطارئة خطياً.',
-      exampleEn: 'Ensure written escalation of dietary/roster updates and concise host alerts.',
-    }));
+    .map((x) => {
+      const names = COMPETENCY_NAMES[x.competency];
+      const step = worstStepFor(x.competency);
+      return {
+        competency: x.competency,
+        noteAr: `${names.ar}: ${x.pct}% من معيار التقييم.`,
+        noteEn: `${names.en}: ${x.pct}% of the rubric.`,
+        exampleAr: step?.feedbackAr ?? '',
+        exampleEn: step?.feedbackEn ?? '',
+        ruleIds: step?.ruleIds ?? [],
+      };
+    });
 
   let expertBridgeSuggestion: ExpertSuggestion | undefined;
   if (params.repeatedLowCompetency) {

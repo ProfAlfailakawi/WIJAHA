@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { z } from 'zod';
+import { ResultBlockSchema } from '../../shared/types.ts';
 import { normalizeArabic } from '../../shared/arabic.ts';
 import {
   WijahaResultSchema,
@@ -732,6 +734,12 @@ export function verifyAndHardenResultPure(
 /**
  * Generates a rich, domain-grounded WijahaResult from retrieved rules (and optional Gemini enrichment).
  */
+const GeminiCandidateSchema = z.object({
+  title: z.string().max(200).optional(),
+  summary: z.array(z.string().max(400)).max(5).optional(),
+  blocks: z.array(ResultBlockSchema).min(1).max(4),
+});
+
 export async function executeWijahaPipeline(params: {
   rawQuery: string;
   locale: Locale;
@@ -924,17 +932,23 @@ export async function executeWijahaPipeline(params: {
           })),
         }),
       });
-      if (geminiCandidate?.blocks && Array.isArray(geminiCandidate.blocks) && geminiCandidate.blocks.length > 0) {
+      // E3: model output is untrusted. Validate every block against the strict schema; drop anything invalid.
+      const candidateParse = GeminiCandidateSchema.safeParse(geminiCandidate);
+      if (!candidateParse.success) {
+        console.warn('Gemini output failed schema validation; using deterministic builder.');
+      }
+      const validBlocks = candidateParse.success ? candidateParse.data.blocks : [];
+      if (candidateParse.success && validBlocks.length > 0) {
         const merged: WijahaResult = {
           id: resultId,
           locale,
-          title: (geminiCandidate.title || params.rawQuery).slice(0, 60),
+          title: (candidateParse.data.title || params.rawQuery).slice(0, 60),
           intent: entities.intent,
           context,
           assumptions,
           clarification,
-          summary: (geminiCandidate.summary || []).slice(0, 3),
-          blocks: geminiCandidate.blocks as ResultBlock[],
+          summary: (candidateParse.data.summary || []).slice(0, 3),
+          blocks: validBlocks,
           primaryAction: {
             id: 'export_pdf',
             label: locale === 'ar' ? 'حمّل الخطة للفريق' : 'Download Plan (PDF)',

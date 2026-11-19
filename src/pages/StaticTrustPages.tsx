@@ -107,14 +107,14 @@ export function MethodologyPage() {
       ? [
           { step: '01', title: 'تحليل النية والسياق', desc: 'استخراج نوع المناسبة، الدولة، ومستوى الحساسية مع دعم اللهجة الخليجية والفصحى.' },
           { step: '02', title: 'استرجاع معرفي هجين', desc: 'مطابقة دلالية ونصية مع قواعد المراسم المصنفة جغرافياً وموضوعياً.' },
-          { step: '03', title: 'توليد مهيكل صارم', desc: 'بناء قوالب العمل الستة وفق مخطط Zod محكم يمنع الهلوسة.' },
+          { step: '03', title: 'توليد مهيكل صارم', desc: 'بناء قوالب العمل الستة وفق قوالب ثابتة، وكل نتيجة تُفحص قبل عرضها فلا تظهر معلومة بلا مصدر.' },
           { step: '04', title: 'فحص المصادر والحساسية', desc: 'التحقق الحتمي من معرفات القواعد وإرفاق تنبيه المراجعة البشرية للمناسبات الحساسة.' },
           { step: '05', title: 'مراجعة الخبراء الدورية', desc: 'تخضع القواعد المعتمدة لمراجعة خبراء المراسم بتاريخ استحقاق دوري.' },
         ]
       : [
           { step: '01', title: 'Intent & Context Analysis', desc: 'Extracts occasion type, country, and sensitivity across Gulf Arabic, MSA, and English.' },
           { step: '02', title: 'Hybrid Knowledge Retrieval', desc: 'Combines lexical and semantic matching across country- and topic-indexed rules.' },
-          { step: '03', title: 'Strict Structured Generation', desc: 'Synthesizes the 6 V1 action blocks under strict Zod schema validation.' },
+          { step: '03', title: 'Strict Structured Generation', desc: 'Synthesizes the 6 V1 action blocks from fixed templates; every result is checked before it is shown.' },
           { step: '04', title: 'Deterministic Citation Audit', desc: 'Strips any unverified rule IDs and enforces high-sensitivity human-review notices.' },
           { step: '05', title: 'Scheduled Expert Governance', desc: 'Approved rules carry explicit reviewer attribution and scheduled review due dates.' },
         ];
@@ -378,7 +378,7 @@ export function NotFoundPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={t.home.placeholders[0]}
-            className="flex-1 min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 text-sm text-[var(--ink)]"
+            className="flex-1 min-w-0 min-h-[46px] rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 text-sm text-[var(--ink)]"
           />
           <Button type="submit" variant="primary">
             <SendIcon className="w-4 h-4" />
