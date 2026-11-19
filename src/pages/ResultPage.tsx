@@ -434,7 +434,7 @@ export function ResultPage() {
         {result && (
           <>
             {/* 1. Context Header + Editable Chips + Editable Assumption */}
-            <header className="wj-masthead wj-rise px-6 sm:px-10 pt-9 pb-8 space-y-5">
+            <header className="v2-hero !rounded-[28px] px-6 sm:px-10 pt-9 pb-8 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-[0.72rem] tracking-[0.35em] text-[var(--gold)] uppercase">
                   {locale === 'ar' ? 'ملف المناسبة' : 'Occasion dossier'}
@@ -578,15 +578,18 @@ export function ResultPage() {
             )}
 
             {/* 3. Direct 3-Point Executive Summary */}
-            <section className="wj-invitation wj-rise p-6 sm:p-8" style={{ animationDelay: '80ms' }}>
-              <h2 className="text-xl text-[var(--ink)] mb-5">{t.result.summaryTitle}</h2>
-              <ol className="space-y-4">
-                {result.summary.map((line, idx) => (
-                  <li key={idx} className="flex items-start gap-4">
-                    <span className="wj-seal mt-0.5"><span className="tabular-nums">{idx + 1}</span></span>
-                    <span className="text-[1.02rem] leading-relaxed text-[var(--ink)]">{line}</span>
-                  </li>
-                ))}
+            <section>
+              <h2 className="text-xl sm:text-2xl text-[var(--ink)] mb-4">{t.result.summaryTitle}</h2>
+              <ol className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {result.summary.map((line, idx) => {
+                  const tn = ['gold', 'teal', 'indigo'][idx % 3];
+                  return (
+                    <li key={idx} className="v2-card p-5 flex flex-col gap-3">
+                      <span className="v2-ico w-12 h-12 text-xl font-bold tabular-nums" style={{ background: `var(--t-${tn})`, color: `var(--c-${tn})` }}>{idx + 1}</span>
+                      <span className="text-[0.98rem] leading-relaxed text-[var(--ink)]">{line}</span>
+                    </li>
+                  );
+                })}
               </ol>
             </section>
 
