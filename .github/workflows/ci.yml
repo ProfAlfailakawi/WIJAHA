@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: wijaha
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U app -d wijaha"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: development
+      SQL_HOST: localhost
+      SQL_DB_NAME: wijaha
+      SQL_USER: app
+      SQL_PASSWORD: app
+      SQL_ADMIN_USER: app
+      SQL_ADMIN_PASSWORD: app
+      AI_PROVIDER: mock
+      BILLING_PROVIDER: mock
+      EMAIL_PROVIDER: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Enable pgvector
+        run: PGPASSWORD=app psql -h localhost -U app -d wijaha -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Migrate and seed
+        run: npm run db:migrate && npm run db:seed
+      - name: Integration and security regression tests
+        run: npm run test:integration
+      - name: Evals (dev + holdout + adversarial)
+        run: npm run evals
+      - name: Build
+        run: npm run build
+      - name: Dependency audit (high and above)
+        run: npm audit --audit-level=high
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
