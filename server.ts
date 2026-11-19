@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import cookieParser from 'cookie-parser';
+import { previewCookieBridge } from './src/server/preview-cookie-bridge.ts';
 import * as dotenv from 'dotenv';
 import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import express, { type Request, type Response } from 'express';
@@ -194,6 +195,9 @@ export async function buildExpressApp() {
   const billingProvider = createBillingProvider(appEnv);
   const app = express();
   app.set('trust proxy', 1);
+  if (process.env.COOKIE_BRIDGE === 'true') {
+    app.use(previewCookieBridge());
+  }
 
   // Signed Billing Webhook MUST read raw bytes BEFORE express.json() (A3)
   app.post(
@@ -3283,7 +3287,7 @@ export async function buildExpressApp() {
 async function startServer() {
   const app = await buildExpressApp();
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.SERVE_STATIC !== 'true') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

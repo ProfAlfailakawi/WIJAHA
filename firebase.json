@@ -1,0 +1,15 @@
+{
+  "hosting": {
+    "public": "deploy/empty",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "**", "run": { "serviceId": "wijaha", "region": "europe-west1" } }
+    ],
+    "headers": [
+      {
+        "source": "/api/**",
+        "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+      }
+    ]
+  }
+}
