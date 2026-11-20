@@ -56,27 +56,24 @@ export async function svgToPngBlob(svg: SVGSVGElement, scale = 2, background = '
   const vb = svg.viewBox.baseVal;
   const width = Math.round(vb.width * scale);
   const height = Math.round(vb.height * scale);
-  const url = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }));
-  try {
-    const img = new Image();
-    img.decoding = 'async';
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error('SVG could not be rasterized'));
-      img.src = url;
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas unavailable');
-    ctx.drawImage(img, 0, 0, width, height);
-    return await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG encoding failed'))), 'image/png'),
-    );
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  // A data: URL (allowed by the site's CSP img-src) rather than a blob: URL.
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+  const img = new Image();
+  img.decoding = 'async';
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('SVG could not be rasterized'));
+    img.src = url;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas unavailable');
+  ctx.drawImage(img, 0, 0, width, height);
+  return await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG encoding failed'))), 'image/png'),
+  );
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {
