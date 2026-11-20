@@ -1,0 +1,5 @@
+# Firebase web API keys are public client identifiers by design (they ship in every web bundle).
+# This key is restricted to the preview's own origins (HTTP referrers) in Google Cloud.
+[allowlist]
+description = "Public Firebase web API key for the wijaha preview project"
+regexes = ['''AIzaSyATxjS7mHTDGG9K7QDH3alG6QKNKdd55yI''']
