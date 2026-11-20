@@ -290,6 +290,7 @@ function ChecklistBlockView({
         <div
           className="h-2 w-full rounded-full bg-[var(--surface-2)] overflow-hidden"
           role="progressbar"
+          aria-label={t.result.blocks.checklistProgress}
           aria-valuenow={stats.pct}
           aria-valuemin={0}
           aria-valuemax={100}
@@ -322,6 +323,7 @@ function ChecklistBlockView({
                       type="button"
                       role="checkbox"
                       aria-checked={checked}
+                      aria-label={item.text}
                       onClick={() => toggleItem(gi, ii, key, checked)}
                       className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
                         checked
