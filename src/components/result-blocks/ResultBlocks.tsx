@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -9,14 +9,19 @@ import {
   Clock,
   Copy,
   FileText,
+  ImageDown,
   ListChecks,
   MapPin,
+  Play,
   Plus,
   ShieldAlert,
   UserCheck,
   Users,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
+import { downloadPng } from '../visuals/export.ts';
+import { SeatingFloorplan, SeatLegend } from '../visuals/SeatingFloorplan';
+import { VisualTimeline } from '../visuals/VisualTimeline';
 import { useI18n } from '../../lib/i18n';
 import type {
   AnswerBlock,
@@ -439,7 +444,9 @@ function TimelineBlockView({
   onChange: (next: TimelineBlock) => void;
   onInspectRule?: (ruleId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const [mode, setMode] = useState<'visual' | 'list'>('visual');
+  const visual = !editable && mode === 'visual';
 
   return (
     <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 sm:p-6">
@@ -448,9 +455,29 @@ function TimelineBlockView({
         <h3 className="text-base font-semibold text-[var(--ink)]">
           {t.result.blocks.timelineTitle}
         </h3>
+        {!editable && (
+          <div role="tablist" className="ms-auto inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-0.5">
+            {(['visual', 'list'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => setMode(m)}
+                className={`min-h-[34px] px-3 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                  mode === m ? 'bg-[var(--surface)] text-[var(--ink)] shadow-2xs' : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {m === 'visual' ? (locale === 'ar' ? 'مصوّر' : 'Visual') : locale === 'ar' ? 'قائمة' : 'List'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="space-y-7">
+      {visual && <VisualTimeline days={block.days} locale={locale} onInspectRule={onInspectRule} />}
+
+      <div className={visual ? 'hidden' : 'space-y-7'}>
         {block.days.map((day, di) => (
           <div key={di}>
             <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--gold-ink)] mb-4">
@@ -650,7 +677,9 @@ function SeatingBlockView({
 }) {
   const { t, locale } = useI18n();
   const [activeTab, setActiveTab] = useState<'diagram' | 'list'>('diagram');
-  const [selectedSeatId, setSelectedSeatId] = useState<string>(block.seats[0]?.id || '');
+  const [selectedSeatId, setSelectedSeatId] = useState<string>(block.seats[1]?.id || block.seats[0]?.id || '');
+  const [playKey, setPlayKey] = useState(0);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const sortedSeats = useMemo(
     () => [...block.seats].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)),
@@ -731,170 +760,40 @@ function SeatingBlockView({
 
       {activeTab === 'diagram' ? (
         <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 sm:p-4 overflow-hidden">
-            <svg
-              viewBox="0 0 640 400"
-              role="img"
-              aria-label={t.result.blocks.seatingTitle}
-              className="w-full h-auto max-h-[380px] select-none"
-            >
-              {/* Architectural Grid Frame */}
-              <rect
-                x="16"
-                y="16"
-                width="608"
-                height="368"
-                rx="12"
-                fill="var(--surface)"
-                stroke="var(--line)"
-                strokeWidth="1.2"
-              />
-
-              {/* Entrance Orientation Marker at Bottom */}
-              <line
-                x1="260"
-                y1="384"
-                x2="380"
-                y2="384"
-                stroke="var(--gold)"
-                strokeWidth="3"
-              />
-              <text
-                x="320"
-                y="372"
-                textAnchor="middle"
-                fontSize="11"
-                fill="var(--ink-3)"
-              >
-                {locale === 'ar' ? 'مدخل القاعة الرئيسي' : 'Main Hall Entrance'}
-              </text>
-
-              {/* Table Surface */}
-              {block.layout === 'round' ? (
-                <g>
-                  <circle
-                    cx="320"
-                    cy="195"
-                    r="92"
-                    fill="var(--surface-2)"
-                    stroke="var(--gold)"
-                    strokeWidth="1.6"
-                  />
-                  <circle
-                    cx="320"
-                    cy="195"
-                    r="78"
-                    fill="none"
-                    stroke="var(--line)"
-                    strokeDasharray="3 3"
-                  />
-                  <text
-                    x="320"
-                    y="199"
-                    textAnchor="middle"
-                    fontSize="12"
-                    fontWeight="600"
-                    fill="var(--ink-2)"
-                  >
-                    {locale === 'ar' ? 'طاولة مستديرة رسمية' : 'Formal Round Table'}
-                  </text>
-                </g>
-              ) : (
-                <g>
-                  <rect
-                    x="150"
-                    y="142"
-                    width="340"
-                    height="106"
-                    rx="14"
-                    fill="var(--surface-2)"
-                    stroke="var(--gold)"
-                    strokeWidth="1.6"
-                  />
-                  <text
-                    x="320"
-                    y="200"
-                    textAnchor="middle"
-                    fontSize="12"
-                    fontWeight="600"
-                    fill="var(--ink-2)"
-                  >
-                    {locale === 'ar' ? 'طاولة اجتماعات رسمية' : 'Formal Conference Table'}
-                  </text>
-                </g>
-              )}
-
-              {/* Seats */}
-              {block.seats.map((seat) => {
-                const cx = (seat.x / 100) * 560 + 40;
-                const cy = (seat.y / 100) * 310 + 38;
-                const isHost = seat.rank === 1 || seat.role === 'host';
-                const isChiefGuest = seat.rank === 2 || seat.role === 'chief_guest';
-                const isSelected = selectedSeat?.id === seat.id;
-
-                return (
-                  <g
-                    key={seat.id}
-                    onClick={() => setSelectedSeatId(seat.id)}
-                    className="cursor-pointer"
-                  >
-                    {isSelected && (
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r="26"
-                        fill="none"
-                        stroke="var(--gold)"
-                        strokeWidth="2"
-                      />
-                    )}
-                    <circle
-                      cx={cx}
-                      cy={cy}
-                      r="20"
-                      fill={
-                        isHost
-                          ? 'var(--primary)'
-                          : isChiefGuest
-                            ? 'var(--gold)'
-                            : 'var(--surface)'
-                      }
-                      stroke={isHost || isChiefGuest ? 'none' : 'var(--ink-2)'}
-                      strokeWidth="1.4"
-                    />
-                    <text
-                      x={cx}
-                      y={cy + 4}
-                      textAnchor="middle"
-                      fontSize="12"
-                      fontWeight="700"
-                      fill={
-                        isHost
-                          ? 'var(--bg)'
-                          : isChiefGuest
-                            ? '#14213D'
-                            : 'var(--ink)'
-                      }
-                    >
-                      {seat.rank ?? '•'}
-                    </text>
-                    <text
-                      x={cx}
-                      y={cy + 35}
-                      textAnchor="middle"
-                      fontSize="11"
-                      fontWeight="500"
-                      fill="var(--ink)"
-                    >
-                      {seat.label.length > 18 ? `${seat.label.slice(0, 17)}…` : seat.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+          <div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] p-2 sm:p-3 overflow-hidden">
+            <SeatingFloorplan
+              ref={svgRef}
+              layout={block.layout}
+              seats={block.seats}
+              locale={locale}
+              selectedId={selectedSeat?.id}
+              onSelect={setSelectedSeatId}
+              animateKey={playKey}
+              ariaLabel={t.result.blocks.seatingTitle}
+            />
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPlayKey((n) => n + 1)}
+              className="min-h-[40px] inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 text-xs font-bold text-[var(--bg)] cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5" aria-hidden="true" />
+              {locale === 'ar' ? 'شغّل الجلوس' : 'Play seating'}
+            </button>
+            <button
+              type="button"
+              onClick={() => svgRef.current && void downloadPng(svgRef.current, 'wijaha-seating')}
+              className="min-h-[40px] inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 text-xs font-semibold text-[var(--ink)] hover:bg-[var(--surface-2)] cursor-pointer"
+            >
+              <ImageDown className="w-3.5 h-3.5" aria-hidden="true" />
+              {locale === 'ar' ? 'حمّل صورة' : 'Download image'}
+            </button>
+          </div>
+          <SeatLegend seats={block.seats} locale={locale} selectedId={selectedSeat?.id} onSelect={setSelectedSeatId} />
 
-          {/* Interactive Selected Seat Inspector + Swap Controls */}
+          {/* Interactive Selected Seat Inspector
+ + Swap Controls */}
           {selectedSeat && (
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm">

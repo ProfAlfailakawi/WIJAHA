@@ -20,6 +20,8 @@ import {
 import type { RetrievedRule } from '../knowledge/retrieval.ts';
 import { callGeminiJson, getAiProviderStatus } from './provider.ts';
 import { detectCountry } from './countries.ts';
+import { buildSeatNodes } from '../../shared/visuals/seat-nodes.ts';
+import type { LayoutKind } from '../../shared/visuals/seating.ts';
 import { classifyIntent, OUT_OF_SCOPE_RE, ROYAL_HIGH_RE, stripNegatedMentions, UNSAFE_RE } from './intent-lexicon.ts';
 
 export interface ExtractedEntities {
@@ -202,122 +204,6 @@ export function analyzeIntentAndContextPure(rawQuery: string): ExtractedEntities
     requestedDraftLang,
     missingCritical,
   };
-}
-
-function buildSeatingCoordinates(
-  layout: 'round' | 'rect' | 'u_shape',
-  count: number,
-  locale: Locale,
-  isBilateral: boolean,
-): SeatNode[] {
-  const total = Math.max(4, Math.min(14, count));
-  const seats: SeatNode[] = [];
-
-  if (layout === 'round') {
-    // Host at top center (50, 16) facing entrance at bottom; Chief Guest to host's right (in screen view: 26, 26)
-    const labelsAr = [
-      { label: 'المضيف الرئيسي', role: 'المضيف (مواجه للمدخل)' },
-      { label: 'رئيس الوفد الضيف', role: 'ضيف الشرف الأول (يمين المضيف)' },
-      { label: 'نائب المضيف', role: 'الجانب المضيف' },
-      { label: 'الضيف الثاني بالوفد', role: 'يسار المضيف' },
-      { label: 'مترجم / منسق الوفد', role: 'مساندة تواصل' },
-      { label: 'ممثل الجهة المضيفة 2', role: 'الجانب المضيف' },
-      { label: 'عضو الوفد الضيف 3', role: 'الوفد الزائر' },
-      { label: 'مسؤول المراسم', role: 'إشراف تشغيلي (قرب المدخل)' },
-      { label: 'عضو الوفد الضيف 4', role: 'الوفد الزائر' },
-      { label: 'ممثل الجهة المضيفة 3', role: 'الجانب المضيف' },
-      { label: 'عضو الوفد الضيف 5', role: 'الوفد الزائر' },
-      { label: 'ممثل الجهة المضيفة 4', role: 'الجانب المضيف' },
-    ];
-    const labelsEn = [
-      { label: 'Principal Host', role: 'Host (Facing Entrance)' },
-      { label: 'Head of Delegation', role: 'Chief Guest (Host Right)' },
-      { label: 'Deputy Host', role: 'Host Delegation' },
-      { label: 'Second Visiting Principal', role: 'Host Left' },
-      { label: 'Interpreter / Liaison', role: 'Communication Support' },
-      { label: 'Host Representative 2', role: 'Host Delegation' },
-      { label: 'Visiting Delegate 3', role: 'Visiting Delegation' },
-      { label: 'Protocol Lead', role: 'Logistics Seat (Near Door)' },
-      { label: 'Visiting Delegate 4', role: 'Visiting Delegation' },
-      { label: 'Host Representative 3', role: 'Host Delegation' },
-      { label: 'Visiting Delegate 5', role: 'Visiting Delegation' },
-      { label: 'Host Representative 4', role: 'Host Delegation' },
-    ];
-
-    const list = locale === 'ar' ? labelsAr : labelsEn;
-    // Evenly spaced angles arranged by diplomatic right-left alternation around top host (-90 deg)
-    const step = 360 / total;
-    const alternatingOffsets: number[] = [0];
-    for (let k = 1; alternatingOffsets.length < total; k++) {
-      alternatingOffsets.push(-k * step);
-      if (alternatingOffsets.length < total) {
-        alternatingOffsets.push(k * step);
-      }
-    }
-    for (let i = 0; i < total; i++) {
-      const deg = -90 + (alternatingOffsets[i] ?? 0);
-      const rad = (deg * Math.PI) / 180;
-      const x = Math.round(50 + 35 * Math.cos(rad));
-      const y = Math.round(50 + 35 * Math.sin(rad));
-      const meta = list[i] ?? {
-        label: locale === 'ar' ? `مقعد ${i + 1}` : `Seat ${i + 1}`,
-        role: locale === 'ar' ? 'مشارك' : 'Participant',
-      };
-      seats.push({
-        id: `seat_${i + 1}`,
-        label: meta.label,
-        role: meta.role,
-        rank: i + 1,
-        x,
-        y,
-      });
-    }
-    return seats;
-  }
-
-  // Rectangular bilateral table (top row = Host side, bottom row = Visiting side facing across)
-  const perSide = Math.max(3, Math.ceil(total / 2));
-  for (let i = 0; i < perSide; i++) {
-    const x = Math.round(20 + (i * 60) / Math.max(1, perSide - 1));
-    const isCenter = i === Math.floor(perSide / 2);
-    seats.push({
-      id: `host_${i + 1}`,
-      label: isCenter
-        ? locale === 'ar'
-          ? 'رئيس الوفد المضيف'
-          : 'Host Principal'
-        : locale === 'ar'
-          ? `ممثل المضيف ${i + 1}`
-          : `Host Member ${i + 1}`,
-      role: isBilateral
-        ? locale === 'ar'
-          ? 'الجانب المضيف'
-          : 'Host Side'
-        : undefined,
-      rank: isCenter ? 1 : i + 3,
-      x,
-      y: 26,
-    });
-    seats.push({
-      id: `guest_${i + 1}`,
-      label: isCenter
-        ? locale === 'ar'
-          ? 'رئيس الوفد الضيف'
-          : 'Visiting Head'
-        : i === Math.floor(perSide / 2) + 1
-          ? locale === 'ar'
-            ? 'المترجم المرافق'
-            : 'Interpreter'
-          : locale === 'ar'
-            ? `عضو الوفد الضيف ${i + 1}`
-            : `Visiting Member ${i + 1}`,
-      role: locale === 'ar' ? 'الوفد الضيف' : 'Visiting Side',
-      rank: isCenter ? 2 : i + 4,
-      x,
-      y: 74,
-    });
-  }
-  return seats.slice(0, total);
 }
 
 /**
@@ -1083,17 +969,28 @@ export async function executeWijahaPipeline(params: {
         qLower.includes('banquet');
       const useRound =
         mentionsRound || entities.intent === 'hosting_hospitality' || entities.countryIso === 'CN';
-      const layout = useRound ? 'round' : 'rect';
-      const seats = buildSeatingCoordinates(
+      const gulfCountry = ['KW', 'SA', 'AE', 'QA', 'BH', 'OM', 'GCC'].includes(entities.countryIso ?? '');
+      const mentionsMajlis =
+        qNorm.includes('مجلس') || qNorm.includes('ديوانيه') || qLower.includes('majlis') || qLower.includes('diwaniya');
+      const layout: LayoutKind = gulfCountry && mentionsMajlis ? 'majlis' : useRound ? 'round' : 'rect';
+      const seats = buildSeatNodes(
         layout,
         effectiveGuests,
         locale,
-        !useRound,
+        layout === 'rect',
       );
       const rSeat1 =
-        retrievedRules.find((x) => x.id === 'R-DEMO-0011' || x.id === 'R-DEMO-0038') ?? r(0);
+        retrievedRules.find((x) =>
+          layout === 'majlis'
+            ? x.id === 'R-ARAB-023'
+            : x.id === 'R-DEMO-0011' || x.id === 'R-DEMO-0038',
+        ) ?? r(0);
       const rSeat2 =
-        retrievedRules.find((x) => x.id === 'R-DEMO-0040' || x.id === 'R-DEMO-0039') ?? r(1);
+        retrievedRules.find((x) =>
+          layout === 'majlis'
+            ? x.id === 'R-ARAB-024'
+            : x.id === 'R-DEMO-0040' || x.id === 'R-DEMO-0039',
+        ) ?? r(1);
 
       blocks.push({
         type: 'seating',
@@ -1233,11 +1130,11 @@ export function applyNaturalProjectUpdatePure(
         );
         return {
           ...b,
-          seats: buildSeatingCoordinates(
-            b.layout === 'round' ? 'round' : 'rect',
+          seats: buildSeatNodes(
+            (['round', 'rect', 'u_shape', 'theatre', 'majlis'] as const).includes(b.layout) ? b.layout : 'rect',
             newCount,
             locale,
-            b.layout !== 'round',
+            b.layout === 'rect',
           ),
         };
       }

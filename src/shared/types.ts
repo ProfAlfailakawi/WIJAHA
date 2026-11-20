@@ -154,7 +154,7 @@ export type SeatNode = z.infer<typeof SeatSchema>;
 
 export const SeatingBlockSchema = z.object({
   type: z.literal('seating'),
-  layout: z.enum(['round', 'rect', 'u_shape', 'theatre']),
+  layout: z.enum(['round', 'rect', 'u_shape', 'theatre', 'majlis']),
   seats: z.array(SeatSchema),
   host: z.string().optional(),
   officialPrecedenceNotice: z.boolean().default(true),

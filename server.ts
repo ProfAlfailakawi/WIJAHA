@@ -4,7 +4,7 @@ import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import { previewCookieBridge } from './src/server/preview-cookie-bridge.ts';
 import * as dotenv from 'dotenv';
-import { and, count, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.ts';
@@ -109,6 +109,7 @@ import {
   retrieveHybridRules,
   embedAndStoreRule,
   scoreRulesPure,
+  allowedRuleStatuses,
 } from './src/server/knowledge/retrieval.ts';
 import {
   buildSimulationReportPure,
@@ -310,6 +311,49 @@ export async function buildExpressApp() {
       demoContentActive: await getDemoContentActive(),
       aiMode: getAiProviderStatus().mode,
     });
+  });
+
+  // Public, read-only: one rule that is currently eligible (approved) with its cited references.
+  app.get('/api/rules/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id).slice(0, 40);
+      if (!/^R-[A-Z]+-\d{3,4}$/.test(id)) {
+        sendApiError(res, 400, 'INVALID_RULE_ID', 'errors.validationError');
+        return;
+      }
+      const rows = await db
+        .select()
+        .from(knowledgeRules)
+        .where(and(eq(knowledgeRules.id, id), inArray(knowledgeRules.status, allowedRuleStatuses())))
+        .limit(1);
+      if (rows.length === 0) {
+        sendApiError(res, 404, 'RULE_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const r = rows[0];
+      const srcIds = r.sources.map((x) => x.sourceId);
+      const srcRows = srcIds.length ? await db.select().from(sources).where(inArray(sources.id, srcIds)) : [];
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({
+        rule: {
+          id: r.id,
+          titleAr: r.titleAr,
+          titleEn: r.titleEn,
+          bodyAr: r.bodyAr,
+          bodyEn: r.bodyEn,
+          level: r.level,
+          sensitivity: r.sensitivity,
+          exceptions: r.exceptions,
+          status: r.status,
+          reviewedBy: r.reviewedBy,
+          reviewedAt: r.reviewedAt,
+          references: srcRows.map((x) => ({ title: x.title, publisher: x.publisher, url: x.url, reliability: x.reliability })),
+        },
+      });
+    } catch (error) {
+      console.error('GET /api/rules/:id failed:', error);
+      sendApiError(res, 500, 'RULE_READ_ERROR', 'home.networkError');
+    }
   });
 
   app.get('/api/auth/me', async (req: AuthenticatedRequest, res) => {

@@ -1,3 +1,4 @@
+import { VisualsPage } from './pages/VisualsPage';
 import React, { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './lib/auth-client';
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="/projects/:id" element={<ProjectWorkspacePage />} />
             <Route path="/share/:token" element={<SharedProjectPage />} />
 
+            <Route path="/visuals" element={<VisualsPage />} />
             <Route path="/practice" element={<PracticeListPage />} />
             <Route path="/practice/:scenarioId" element={<SimulationRunnerPage />} />
             <Route path="/practice/report/:runId" element={<SimulationReportPage />} />

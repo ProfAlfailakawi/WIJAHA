@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { ExpertBridgeCard, ResultBlockRenderer } from '../components/result-blocks/ResultBlocks';
+import { ResultVisuals } from '../components/visuals/ResultVisuals';
 import {
   Button,
   DemoContentNotice,
@@ -608,6 +609,8 @@ export function ResultPage() {
                 />
               ))}
             </div>
+
+            <ResultVisuals result={result} locale={locale} onInspectRule={(id) => { setHighlightedRuleId(id); setSourcesDrawerOpen(true); }} />
 
             {/* 5. Action Bar: ONE Primary Button + Calm Secondary Actions */}
             <section className="no-print rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
