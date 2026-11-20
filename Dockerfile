@@ -15,6 +15,7 @@ ENV NODE_ENV=development \
     SERVE_STATIC=true \
     COOKIE_BRIDGE=true \
     ENABLE_DEMO_LOGIN=true \
+    DEMO_ALLOW_PRIVILEGED=false \
     AI_PROVIDER=mock \
     BILLING_PROVIDER=mock \
     EMAIL_PROVIDER=console \

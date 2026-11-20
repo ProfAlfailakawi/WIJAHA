@@ -194,6 +194,9 @@ export async function buildExpressApp() {
   const emailProvider = createEmailProvider(appEnv);
   const billingProvider = createBillingProvider(appEnv);
   const app = express();
+  // Public previews can hide the admin/reviewer demo accounts (DEMO_ALLOW_PRIVILEGED=false).
+  const demoPrivilegedEnabled = process.env.DEMO_ALLOW_PRIVILEGED !== 'false';
+  const PRIVILEGED_DEMO_EMAILS = ['admin@wijaha.demo', 'yousef@wijaha.demo'];
   app.set('trust proxy', 1);
   if (process.env.COOKIE_BRIDGE === 'true') {
     app.use(previewCookieBridge());
@@ -291,6 +294,7 @@ export async function buildExpressApp() {
   app.get('/api/config', (_req, res) => {
     res.json({
       demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
       aiMode: getAiProviderStatus().mode,
     });
   });
@@ -304,6 +308,7 @@ export async function buildExpressApp() {
           actor: null,
           aiMode: getAiProviderStatus().mode,
           demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
         });
         return;
       }
@@ -338,6 +343,7 @@ export async function buildExpressApp() {
         recentProjects: recentProjs.map((p) => ({ id: p.id, title: p.title })),
         aiMode: getAiProviderStatus().mode,
         demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
       });
     } catch (error) {
       console.error('/api/auth/me failed:', error);
@@ -536,6 +542,10 @@ export async function buildExpressApp() {
         ];
         if (!allowedDemoEmails.includes(email)) {
           sendApiError(res, 403, 'NOT_DEMO_ACCOUNT', 'auth.dialogTitle');
+          return;
+        }
+        if (!demoPrivilegedEnabled && PRIVILEGED_DEMO_EMAILS.includes(email)) {
+          sendApiError(res, 403, 'PRIVILEGED_DEMO_DISABLED', 'auth.dialogTitle');
           return;
         }
 

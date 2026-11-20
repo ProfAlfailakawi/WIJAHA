@@ -47,6 +47,7 @@ export interface AuthMeState {
   recentProjects?: Array<{ id: string; title: string }>;
   aiMode?: string;
   demoLoginEnabled?: boolean;
+  demoPrivilegedEnabled?: boolean;
 }
 
 interface AuthContextValue {

@@ -186,7 +186,13 @@ export function SignInModal() {
           <div className="border-t border-[var(--line)] pt-4">
             <p className="text-xs font-medium text-[var(--ink-3)] mb-2.5">{t.auth.demoTitle}</p>
             <div className="grid grid-cols-1 gap-2">
-              {demoAccounts.map((acc) => (
+              {demoAccounts
+                .filter(
+                  (acc) =>
+                    state.demoPrivilegedEnabled !== false ||
+                    !['admin@wijaha.demo', 'yousef@wijaha.demo'].includes(acc.email),
+                )
+                .map((acc) => (
                 <button
                   key={acc.email}
                   type="button"
