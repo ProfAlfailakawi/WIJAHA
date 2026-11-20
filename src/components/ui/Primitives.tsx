@@ -150,7 +150,7 @@ export function Dialog({
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-[2px]"
+          className="wj-dialog fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="wijaha-dialog-title"
@@ -264,7 +264,7 @@ export function ToastNotice({ message, onDismiss }: { message: string | null; on
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-5 inset-x-4 sm:inset-x-auto sm:end-6 z-50 max-w-md rounded-xl border border-[var(--line)] bg-[var(--ink)] text-[var(--bg)] px-4 py-3 shadow-lg flex items-center gap-3 text-sm"
+      className="wj-toast fixed bottom-5 inset-x-4 sm:inset-x-auto sm:end-6 z-50 max-w-md rounded-xl border border-[var(--line)] bg-[var(--ink)] text-[var(--bg)] px-4 py-3 shadow-lg flex items-center gap-3 text-sm"
     >
       <CheckCircle2 className="w-4 h-4 text-[var(--gold)] shrink-0" aria-hidden="true" />
       <span className="flex-1">{message}</span>
@@ -341,7 +341,7 @@ export function OfflineBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="bg-[var(--surface-2)] border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--ink-2)] flex items-center justify-center gap-2"
+      className="wj-offline bg-[var(--surface-2)] border-b border-[var(--line)] px-4 py-2 text-xs text-[var(--ink-2)] flex items-center justify-center gap-2"
     >
       <WifiOff className="w-3.5 h-3.5 text-[var(--warning)]" aria-hidden="true" />
       <span>{t.meta.offlineBanner}</span>
