@@ -263,7 +263,7 @@ export function allowedRuleStatuses(): string[] {
 }
 
 async function semanticRuleIds(query: string, statuses: string[], limit = 20): Promise<string[]> {
-  const vectors = await embedTexts([query]);
+  const vectors = await embedTexts([query], 'query');
   if (!vectors) return [];
   const distance = cosineDistance(knowledgeRules.embeddingVec, vectors[0]);
   const rows = await db

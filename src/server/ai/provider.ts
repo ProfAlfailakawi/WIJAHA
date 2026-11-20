@@ -6,6 +6,7 @@ export interface AiProviderStatus {
   intentModel: string;
   generateModel: string;
   embedModel: string;
+  embedProvider: 'none' | 'gemini' | 'vertex';
 }
 
 function shouldUseClaude(): boolean {
@@ -32,7 +33,10 @@ export function getAiProviderStatus(): AiProviderStatus {
     generateModel: shouldUseClaude()
       ? process.env.CLAUDE_MODEL_GENERATE || 'claude-sonnet-5-5'
       : process.env.AI_MODEL_GENERATE || 'gemini-4-hydrogen',
-    embedModel: process.env.AI_MODEL_EMBED || 'gemini-embedding-2',
+    embedModel: shouldUseVertexEmbeddings()
+      ? process.env.VERTEX_EMBED_MODEL || 'text-embedding-005'
+      : process.env.AI_MODEL_EMBED || 'gemini-embedding-2',
+    embedProvider: shouldUseVertexEmbeddings() ? 'vertex' : shouldUseGemini() ? 'gemini' : 'none',
   };
 }
 
@@ -130,12 +134,70 @@ async function callClaudeJson<T>(params: {
 
 export const EMBEDDING_DIMENSIONS = 768;
 
+/** Vertex AI embeddings authenticate with the service account (no API key): AI_EMBED_PROVIDER=vertex + VERTEX_PROJECT. */
+export function shouldUseVertexEmbeddings(): boolean {
+  return (process.env.AI_EMBED_PROVIDER || '').toLowerCase() === 'vertex' && Boolean(process.env.VERTEX_PROJECT);
+}
+
+let cachedToken: { value: string; expiresAt: number } | null = null;
+
+async function getGoogleAccessToken(): Promise<string> {
+  if (process.env.VERTEX_ACCESS_TOKEN) return process.env.VERTEX_ACCESS_TOKEN; // local measurement/testing only
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
+  const res = await fetch(
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
+    { headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(3000) },
+  );
+  if (!res.ok) throw new Error(`metadata token error ${res.status}`);
+  const j = (await res.json()) as { access_token: string; expires_in: number };
+  cachedToken = { value: j.access_token, expiresAt: Date.now() + j.expires_in * 1000 };
+  return j.access_token;
+}
+
+export type EmbedKind = 'query' | 'document';
+
+async function embedWithVertex(texts: string[], kind: EmbedKind): Promise<number[][]> {
+  const project = process.env.VERTEX_PROJECT as string;
+  const location = process.env.VERTEX_LOCATION || 'us-central1';
+  const model = process.env.VERTEX_EMBED_MODEL || 'text-embedding-005';
+  const token = await getGoogleAccessToken();
+  const out: number[][] = [];
+  for (let i = 0; i < texts.length; i += 20) {
+    const batch = texts.slice(i, i + 20);
+    const res = await fetch(
+      `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:predict`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          instances: batch.map((content) => ({
+            content: content.slice(0, 6000),
+            task_type: kind === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT',
+          })),
+          parameters: { outputDimensionality: EMBEDDING_DIMENSIONS },
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    if (!res.ok) throw new Error(`Vertex embeddings error ${res.status}`);
+    const data = (await res.json()) as { predictions?: Array<{ embeddings?: { values?: number[] } }> };
+    for (const p of data.predictions ?? []) out.push(p.embeddings?.values ?? []);
+  }
+  if (out.length !== texts.length || out.some((v) => v.length !== EMBEDDING_DIMENSIONS)) {
+    throw new Error('Embedding provider returned an unexpected shape.');
+  }
+  return out;
+}
+
+
 /**
  * E2: real semantic embeddings from the configured provider.
  * Returns null when no live provider is configured, so callers can fall back to lexical retrieval.
  */
-export async function embedTexts(texts: string[]): Promise<number[][] | null> {
-  if (shouldUseClaude() || !shouldUseGemini() || texts.length === 0) return null;
+export async function embedTexts(texts: string[], kind: EmbedKind = 'document'): Promise<number[][] | null> {
+  if (texts.length === 0) return null;
+  if (shouldUseVertexEmbeddings()) return embedWithVertex(texts, kind);
+  if (shouldUseClaude() || !shouldUseGemini()) return null;
   const ai = getGeminiClient();
   const response = await ai.models.embedContent({
     model: process.env.AI_MODEL_EMBED || 'gemini-embedding-2',

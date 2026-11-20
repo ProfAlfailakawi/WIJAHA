@@ -14,8 +14,8 @@ async function main() {
   for (const r of rows) {
     const ok = await embedAndStoreRule(r);
     if (!ok) {
-      console.error('No live embedding provider configured (AI_PROVIDER=gemini + GEMINI_API_KEY). Nothing indexed.');
-      process.exit(1);
+      console.error('No live embedding provider configured (AI_EMBED_PROVIDER=vertex + VERTEX_PROJECT, or AI_PROVIDER=gemini + GEMINI_API_KEY). Nothing indexed.');
+      process.exit(process.argv.includes('--soft') ? 0 : 1);
     }
     done += 1;
   }
