@@ -52,34 +52,39 @@ export const ShareCard = forwardRef<SVGSVGElement, ShareCardProps>(function Shar
   const textW = textRight - textLeft;
 
   const layout = useMemo(() => {
-    const items = points.filter((x) => x.trim()).slice(0, 5);
-    const titleMeasure = makeMeasure(`800 66px ${FONT}`);
-    const titleLines = wrapText(title.trim() || (rtl ? 'عنوان البطاقة' : 'Card title'), CARD_W - margin * 2, titleMeasure, 3);
-    const titleBlock = titleLines.length * 86;
-    const top = 262 + titleBlock + 26;
-    const bottom = CARD_H - 190;
+    const all = points.filter((x) => x.trim()).slice(0, 5);
+    const titleSize = 62;
+    const titleLines = wrapText(title.trim() || (rtl ? 'عنوان البطاقة' : 'Card title'), CARD_W - margin * 2, makeMeasure(`800 ${titleSize}px ${FONT}`), 2);
+    const top = 262 + titleLines.length * 80 + 22;
+    const bottom = CARD_H - 196;
     const room = bottom - top;
-    for (const size of [46, 42, 38, 35, 32, 29, 26]) {
-      const measure = makeMeasure(`500 ${size}px ${FONT}`);
-      const lineH = size * 1.55;
-      const wrapped = items.map((t) => wrapText(t, textW * 0.94, measure, 4));
-      const gap = 20;
-      const heights = wrapped.map((ls) => Math.max(108, ls.length * lineH + 46));
-      const sum = heights.reduce((s, h) => s + h, 0) + gap * Math.max(0, items.length - 1);
-      if (sum <= room || size === 26) {
-        let y = top;
-        const cards = wrapped.map((lines, i) => {
-          const card = { lines, y, h: heights[i], size, lineH };
-          y += heights[i] + gap;
-          return card;
-        });
-        return { titleLines, cards, top };
+    const gap = 16;
+    // Fit by shrinking the type; if even the smallest size overflows, drop trailing points (keeping at least three).
+    for (let count = all.length; count >= Math.min(3, all.length); count--) {
+      const items = all.slice(0, count);
+      for (const size of [44, 40, 36, 33, 30, 27, 24, 22]) {
+        const measure = makeMeasure(`500 ${size}px ${FONT}`);
+        const lineH = size * 1.5;
+        const wrapped = items.map((t) => wrapText(t, textW * 0.94, measure, 3));
+        const heights = wrapped.map((ls) => Math.max(96, ls.length * lineH + 44));
+        const sum = heights.reduce((acc, h) => acc + h, 0) + gap * Math.max(0, items.length - 1);
+        if (sum <= room) {
+          // Spread any spare height evenly so the card never looks top-heavy.
+          const extra = Math.min(36, (room - sum) / Math.max(1, items.length));
+          let y = top;
+          const cards = wrapped.map((lines, i) => {
+            const h = heights[i] + extra;
+            const card = { lines, y, h, size, lineH };
+            y += h + gap;
+            return card;
+          });
+          return { titleLines, titleSize, cards, top };
+        }
       }
     }
-    return { titleLines, cards: [] as Array<{ lines: string[]; y: number; h: number; size: number; lineH: number }>, top };
+    return { titleLines, titleSize, cards: [] as Array<{ lines: string[]; y: number; h: number; size: number; lineH: number }>, top };
   }, [points, title, textW, rtl, fontsReady]);
 
-  // The SVG carries an explicit direction, so 'start' is the right edge in Arabic and the left edge in English.
   const anchor = 'start' as const;
   const noteText = note || (rtl ? 'إرشادات استرشادية — تُؤكَّد التفاصيل مع مراسم الجهة المضيفة' : "Advisory guidance — confirm details with the host's protocol office");
   const noteLines = useMemo(() => wrapText(noteText, CARD_W - margin * 2, makeMeasure(`400 22px ${FONT}`), 2), [noteText, fontsReady]);
@@ -142,7 +147,7 @@ export const ShareCard = forwardRef<SVGSVGElement, ShareCardProps>(function Shar
 
       {/* title */}
       {layout.titleLines.map((line, i) => (
-        <text key={i} x={rtl ? CARD_W - margin : margin} y={330 + i * 86} textAnchor={anchor} fontSize="66" fontWeight="800" fill="#ffffff">
+        <text key={i} x={rtl ? CARD_W - margin : margin} y={324 + i * 80} textAnchor={anchor} fontSize={layout.titleSize} fontWeight="800" fill="#ffffff">
           {line}
         </text>
       ))}
@@ -182,7 +187,7 @@ export const ShareCard = forwardRef<SVGSVGElement, ShareCardProps>(function Shar
           {line}
         </text>
       ))}
-      <text x={rtl ? CARD_W - margin : margin} y={CARD_H - 52} textAnchor="start" fontSize="28" fontWeight="700" fill={a.main} style={{ direction: 'ltr', unicodeBidi: 'plaintext' }}>
+      <text x={margin} y={CARD_H - 56} textAnchor="start" fontSize="28" fontWeight="700" fill={a.main} style={{ direction: 'ltr', unicodeBidi: 'plaintext' }}>
         wijaha.web.app
       </text>
     </svg>

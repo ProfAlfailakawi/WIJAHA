@@ -17,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "drizzle-kit migrate --config src/db/drizzle.config.ts",
     "db:seed": "tsx src/db/seed-cli.ts",
-    "kb:reindex": "tsx src/db/reindex-cli.ts"
+    "kb:reindex": "tsx src/db/reindex-cli.ts",
+    "e2e:visuals": "node scripts/e2e/vtest.cjs"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.14.0",
