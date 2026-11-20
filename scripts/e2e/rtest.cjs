@@ -34,7 +34,7 @@ async function ask(ctx, q) {
       log('reception path renders inside the result', hall > 0);
       await p.locator('[aria-label="تشغيل"]').first().click().catch(() => {});
       await p.waitForTimeout(4000);
-      await p.locator('section[aria-label="مرئيات مساعدة"]').screenshot({ path: 'vis/result-visuals.png' });
+      await p.locator('section[aria-label="مرئيات مساعدة"]').screenshot({ path: require('path').join(process.env.SHOTS || require('os').tmpdir(), 'wijaha-result-visuals.png') });
     }
     // timeline visual (if present)
     const tl = await p.getByRole('tab', { name: 'مصوّر' }).count();
@@ -48,7 +48,7 @@ async function ask(ctx, q) {
     if (dl) {
       const buf = fs.readFileSync(await dl.path());
       log('share card downloads as PNG', buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a' && buf.length > 8000, `${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)} ${buf.length}B`);
-      fs.copyFileSync(await dl.path(), 'result-card.png');
+      fs.copyFileSync(await dl.path(), require('path').join(require('os').tmpdir(), 'wijaha-result-card.png'));
     } else log('share card downloads as PNG', false, 'no download');
     await p.keyboard.press('Escape');
     const ax = await new AxeBuilder({ page: p }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
@@ -69,7 +69,7 @@ async function ask(ctx, q) {
     const sec = p.locator('section:has(svg[aria-label])').filter({ hasText: 'الأسبقية' }).first();
     await sec.scrollIntoViewIfNeeded();
     await p.waitForTimeout(1200);
-    await sec.screenshot({ path: 'vis/result-seating.png' });
+    await sec.screenshot({ path: require('path').join(process.env.SHOTS || require('os').tmpdir(), 'wijaha-result-seating.png') });
     log('no page errors (seating)', errs.filter((e) => !/Failed to load resource/.test(e)).length === 0, errs.slice(0, 2).join(' | '));
     await p.close();
   }

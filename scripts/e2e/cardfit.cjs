@@ -50,7 +50,7 @@ const cases = {
       const ok = r.maxBottom <= r.footerTop && r.bad.length === 0 && r.cards >= 3;
       if (!ok) fails++;
       console.log(`${ok ? 'PASS' : 'FAIL'}  [${locale}] ${name}  cards=${r.cards} lastCardBottom=${r.maxBottom} footerLine=${r.footerTop} overflowing=${r.bad.join(',') || 'none'}`);
-      await p.locator('#card svg[viewBox="0 0 1080 1350"]').screenshot({ path: `vis/cardfit-${locale}-${name}.png` });
+      await p.locator('#card svg[viewBox="0 0 1080 1350"]').screenshot({ path: require("os").tmpdir() + `/cardfit-${locale}-${name}.png` });
     }
     await ctx.close();
   }

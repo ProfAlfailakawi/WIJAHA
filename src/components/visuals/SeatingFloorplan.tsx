@@ -1,4 +1,4 @@
-import React, { forwardRef, useMemo } from 'react';
+import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { fromPercent, planLayout, ROOM, type LayoutKind } from '../../shared/visuals/seating.ts';
 import { Chair, Door, FurnitureView, PersonDisc, Room, svgDir, tr, useSvgIds, VisualDefs, type Tone } from './svg-kit.tsx';
@@ -21,6 +21,12 @@ export function toneOf(seat: FloorSeat): Tone {
   return isAide(seat) ? 'aide' : 'guest';
 }
 
+/** Short label for crowded plans: drops honorifics and keeps the first few characters. */
+export function shortName(name: string, max = 11): string {
+  const bare = name.replace(/^(معالي|سعادة|الدكتور|الدكتورة|المهندس|المهندسة|د\.|م\.|Dr\.?|Eng\.?|H\.E\.|Mr\.?|Mrs\.?|Ms\.?)\s*/i, '').trim() || name;
+  return bare.length > max ? `${bare.slice(0, max - 1)}…` : bare;
+}
+
 export const LAYOUT_NAMES: Record<LayoutKind, { ar: string; en: string }> = {
   majlis: { ar: 'المجلس الخليجي', en: 'Gulf majlis' },
   round: { ar: 'مائدة مستديرة', en: 'Round banquet' },
@@ -37,14 +43,41 @@ interface Props {
   onSelect?: (id: string) => void;
   /** Change this number to replay the "guests take their seats" animation. */
   animateKey?: number;
+  /** Enables drag-and-drop: dropping a seat on another swaps them. */
+  onSwap?: (fromId: string, toId: string) => void;
+  /** Show a short name label under every seat. */
+  showNames?: boolean;
+  /** Seats to ring in amber (e.g. precedence warnings). */
+  warnIds?: string[];
   className?: string;
   ariaLabel?: string;
 }
 
 export const SeatingFloorplan = forwardRef<SVGSVGElement, Props>(function SeatingFloorplan(
-  { layout, seats, locale, selectedId, onSelect, animateKey = 0, className, ariaLabel },
+  { layout, seats, locale, selectedId, onSelect, animateKey = 0, className, ariaLabel, onSwap, showNames = false, warnIds = [] },
   ref,
 ) {
+  const innerRef = useRef<SVGSVGElement | null>(null);
+  useImperativeHandle(ref, () => innerRef.current as SVGSVGElement);
+  type Drag = { id: string; x: number; y: number; moved: boolean; target?: string };
+  const [drag, setDragState] = useState<Drag | null>(null);
+  // Pointer events can arrive faster than React re-renders, so the latest drag lives in a ref too.
+  const dragRef = useRef<Drag | null>(null);
+  const setDrag = (next: Drag | null) => {
+    dragRef.current = next;
+    setDragState(next);
+  };
+
+  const toSvg = (e: { clientX: number; clientY: number }) => {
+    const svg = innerRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const p2 = pt.matrixTransform(ctm.inverse());
+    return { x: p2.x, y: p2.y };
+  };
   const p = useSvgIds();
   const reduced = useReducedMotion();
   const plan = useMemo(() => planLayout(layout, seats.length), [layout, seats.length]);
@@ -65,12 +98,44 @@ export const SeatingFloorplan = forwardRef<SVGSVGElement, Props>(function Seatin
 
   return (
     <svg
-      ref={ref}
+      ref={innerRef}
       viewBox={`0 0 ${ROOM.w} ${ROOM.h}`}
       role={onSelect ? 'group' : 'img'}
       aria-label={ariaLabel ?? tr(locale, 'مخطط الجلوس', 'Seating plan')}
       className={className ?? 'w-full h-auto select-none'}
       style={{ direction: svgDir(locale) }}
+      onPointerMove={
+        onSwap
+          ? (e) => {
+              const cur = dragRef.current;
+              if (!cur) return;
+              const { x, y } = toSvg(e);
+              const moved = cur.moved || Math.hypot(x - cur.x, y - cur.y) > 8;
+              let target: string | undefined;
+              let best = 40;
+              for (const sd of ordered) {
+                if (sd.id === cur.id) continue;
+                const q = fromPercent(sd.x, sd.y);
+                const d = Math.hypot(q.x - x, q.y - y);
+                if (d < best) {
+                  best = d;
+                  target = sd.id;
+                }
+              }
+              setDrag({ ...cur, moved, target, x: moved ? x : cur.x, y: moved ? y : cur.y });
+            }
+          : undefined
+      }
+      onPointerUp={
+        onSwap
+          ? () => {
+              const cur = dragRef.current;
+              if (cur?.moved && cur.target) onSwap(cur.id, cur.target);
+              setDrag(null);
+            }
+          : undefined
+      }
+      onPointerCancel={onSwap ? () => setDrag(null) : undefined}
     >
       <VisualDefs p={p} />
       <Room p={p} w={ROOM.w} h={ROOM.h} />
@@ -113,9 +178,9 @@ export const SeatingFloorplan = forwardRef<SVGSVGElement, Props>(function Seatin
             strokeDasharray="2 6"
             strokeLinecap="round"
           />
-           <text x={(hp.x + cp.x) / 2} y={layout === 'majlis' || layout === 'u_shape' ? Math.max(hp.y, cp.y) + 44 : Math.min(hp.y, cp.y) - (layout === 'round' ? 36 : 20)} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--gold-ink, var(--gold))">
+           {!showNames && <text x={(hp.x + cp.x) / 2} y={layout === 'majlis' || layout === 'u_shape' ? Math.max(hp.y, cp.y) + 44 : Math.min(hp.y, cp.y) - (layout === 'round' ? 36 : 20)} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--gold-ink, var(--gold))">
             {tr(locale, 'يمين المضيف', "Host's right")}
-          </text>
+          </text>}
         </g>
       )}
 
@@ -130,13 +195,22 @@ export const SeatingFloorplan = forwardRef<SVGSVGElement, Props>(function Seatin
             initial={initial}
             animate={{ x: 0, y: 0, opacity: 1, scale: 1 }}
             transition={{ delay: animate ? 0.15 * idx : 0, duration: animate ? 0.7 : 0, type: 'spring', stiffness: 90, damping: 16 }}
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
             role={onSelect ? 'button' : undefined}
             tabIndex={onSelect ? 0 : undefined}
             aria-label={`${seat.rank ?? ''} ${seat.label}`}
             onClick={onSelect ? () => onSelect(seat.id) : undefined}
             onKeyDown={onSelect ? (e: React.KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(seat.id)) : undefined}
-            className={onSelect ? 'cursor-pointer outline-none' : undefined}
+            className={onSwap ? 'cursor-grab outline-none' : onSelect ? 'cursor-pointer outline-none' : undefined}
+            onPointerDown={
+              onSwap
+                ? (e: React.PointerEvent) => {
+                    innerRef.current?.setPointerCapture(e.pointerId);
+                    const p0 = toSvg(e);
+                    setDrag({ id: seat.id, x: p0.x, y: p0.y, moved: false });
+                  }
+                : undefined
+            }
+            style={{ transformBox: 'fill-box', transformOrigin: 'center', touchAction: onSwap ? 'none' : undefined, opacity: drag?.moved && drag.id === seat.id ? 0.35 : undefined }}
           >
             <title>{`${seat.rank ?? ''} · ${seat.label}${seat.role ? ` (${seat.role})` : ''}`}</title>
             {layout === 'majlis' ? (
@@ -144,10 +218,27 @@ export const SeatingFloorplan = forwardRef<SVGSVGElement, Props>(function Seatin
             ) : (
               <Chair x={x} y={y} facing={facingFor(seat)} tone={tone} p={p} />
             )}
+            {warnIds.includes(seat.id) && <circle cx={x} cy={y} r="25" fill="none" stroke="#d97706" strokeWidth="3" />}
+            {drag?.moved && drag.target === seat.id && <circle cx={x} cy={y} r="27" fill="none" stroke="var(--gold)" strokeWidth="3.5" />}
             <PersonDisc x={x} y={y} rank={seat.rank ?? '•'} tone={tone} selected={selected} p={p} r={layout === 'majlis' ? 16 : 14} />
+            {showNames && (
+              <text x={x} y={y + 38} textAnchor="middle" fontSize="11.5" fontWeight="700" fill="var(--ink)" stroke="var(--bg)" strokeWidth="4" paintOrder="stroke" strokeLinejoin="round">
+                {shortName(seat.label, 12)}
+              </text>
+            )}
           </motion.g>
         );
       })}
+
+      {drag?.moved && (() => {
+        const src = ordered.find((q) => q.id === drag.id);
+        if (!src) return null;
+        return (
+          <g pointerEvents="none" opacity="0.92">
+            <PersonDisc x={drag.x} y={drag.y} rank={src.rank ?? '•'} tone={toneOf(src)} p={p} r={19} />
+          </g>
+        );
+      })()}
 
       {selectedId &&
         (() => {

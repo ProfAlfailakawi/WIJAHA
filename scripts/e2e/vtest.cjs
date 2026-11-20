@@ -37,7 +37,7 @@ async function pngInfo(buf) {
       const path = await dl.path();
       const info = await pngInfo(fs.readFileSync(path));
       log(`[${locale}] export png #${i + 1} (${dl.suggestedFilename()})`, info.sig && info.w >= 800 && info.size > 8000, `${info.w}x${info.h} ${info.size}B`);
-      if (i === 0 && locale === 'ar') fs.copyFileSync(path, 'export-sample.png');
+      if (i === 0 && locale === 'ar') fs.copyFileSync(path, require('path').join(require('os').tmpdir(), 'wijaha-export-sample.png'));
     }
     const svgBtn = p.locator('[data-testid="export-svg"]').first();
     const [sd] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), svgBtn.click()]);
@@ -87,7 +87,7 @@ async function pngInfo(buf) {
     if (locale === 'en') {
       await p.locator('#card').scrollIntoViewIfNeeded();
       await p.waitForTimeout(800);
-      await p.locator('#card').screenshot({ path: 'vis/card-en.png' });
+      await p.locator('#card').screenshot({ path: require('path').join(process.env.SHOTS || require('os').tmpdir(), 'wijaha-card-en.png') });
     }
     await ctx.close();
   }

@@ -1,4 +1,6 @@
 import { VisualsPage } from './pages/VisualsPage';
+import { SeatingStudioPage } from './pages/SeatingStudioPage';
+import { OccasionsPage } from './pages/OccasionsPage';
 import React, { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './lib/auth-client';
@@ -71,6 +73,8 @@ export default function App() {
             <Route path="/share/:token" element={<SharedProjectPage />} />
 
             <Route path="/visuals" element={<VisualsPage />} />
+            <Route path="/seating" element={<SeatingStudioPage />} />
+            <Route path="/occasions" element={<OccasionsPage />} />
             <Route path="/practice" element={<PracticeListPage />} />
             <Route path="/practice/:scenarioId" element={<SimulationRunnerPage />} />
             <Route path="/practice/report/:runId" element={<SimulationReportPage />} />

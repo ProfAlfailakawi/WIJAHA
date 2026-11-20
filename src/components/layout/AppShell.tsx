@@ -419,6 +419,8 @@ export function AppShell({
                 : []),
               { to: '/practice', label: t.nav.practice },
               { to: '/visuals', label: t.nav.visuals },
+              { to: '/seating', label: t.nav.seating },
+              { to: '/occasions', label: t.nav.occasions },
               { to: '/check', label: t.nav.checkPlan },
               { to: '/experts', label: t.nav.experts },
               { to: '/pricing', label: t.nav.pricing },
@@ -487,6 +489,12 @@ export function AppShell({
             </Link>
             <Link to="/visuals" className="hover:text-[var(--ink)] transition-colors">
               {t.nav.visuals}
+            </Link>
+            <Link to="/seating" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.seating}
+            </Link>
+            <Link to="/occasions" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.occasions}
             </Link>
             <Link to="/experts" className="hover:text-[var(--ink)] transition-colors">
               {t.footer.experts}
