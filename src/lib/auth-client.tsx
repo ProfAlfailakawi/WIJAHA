@@ -48,6 +48,7 @@ export interface AuthMeState {
   aiMode?: string;
   demoLoginEnabled?: boolean;
   demoPrivilegedEnabled?: boolean;
+  demoContentActive?: boolean;
 }
 
 interface AuthContextValue {

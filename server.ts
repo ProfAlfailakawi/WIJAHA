@@ -4,7 +4,7 @@ import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import { previewCookieBridge } from './src/server/preview-cookie-bridge.ts';
 import * as dotenv from 'dotenv';
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.ts';
@@ -196,6 +196,18 @@ export async function buildExpressApp() {
   const app = express();
   // Public previews can hide the admin/reviewer demo accounts (DEMO_ALLOW_PRIVILEGED=false).
   const demoPrivilegedEnabled = process.env.DEMO_ALLOW_PRIVILEGED !== 'false';
+  // True while any unreviewed demo rule exists; the UI shows "demo content" notices only then (cached 60s).
+  let demoContentCache: { at: number; value: boolean } | null = null;
+  const getDemoContentActive = async (): Promise<boolean> => {
+    if (demoContentCache && Date.now() - demoContentCache.at < 60_000) return demoContentCache.value;
+    try {
+      const [row] = await db.select({ n: count() }).from(knowledgeRules).where(eq(knowledgeRules.status, 'draft_demo'));
+      demoContentCache = { at: Date.now(), value: Number(row?.n ?? 0) > 0 };
+    } catch {
+      demoContentCache = { at: Date.now(), value: true };
+    }
+    return demoContentCache.value;
+  };
   const PRIVILEGED_DEMO_EMAILS = ['admin@wijaha.demo', 'yousef@wijaha.demo'];
   app.set('trust proxy', 1);
   if (process.env.COOKIE_BRIDGE === 'true') {
@@ -291,10 +303,11 @@ export async function buildExpressApp() {
   // 1. Auth, Session, Account & Multi-Tenant Org Endpoints
   // -------------------------------------------------------------------------
 
-  app.get('/api/config', (_req, res) => {
+  app.get('/api/config', async (_req, res) => {
     res.json({
       demoLoginEnabled: appEnv.demoLoginEnabled,
       demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
       aiMode: getAiProviderStatus().mode,
     });
   });
@@ -309,6 +322,7 @@ export async function buildExpressApp() {
           aiMode: getAiProviderStatus().mode,
           demoLoginEnabled: appEnv.demoLoginEnabled,
       demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
         });
         return;
       }
@@ -344,6 +358,7 @@ export async function buildExpressApp() {
         aiMode: getAiProviderStatus().mode,
         demoLoginEnabled: appEnv.demoLoginEnabled,
       demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
       });
     } catch (error) {
       console.error('/api/auth/me failed:', error);

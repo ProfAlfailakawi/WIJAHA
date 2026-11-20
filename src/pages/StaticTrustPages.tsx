@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../lib/auth-client';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, CheckCircle2, FileWarning, Layers, ShieldCheck } from 'lucide-react';
 import { BRAND } from '../config/brand';
@@ -205,6 +206,8 @@ export function MethodologyPage() {
 
 export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }) {
   const { locale, t } = useI18n();
+  const { state } = useAuth();
+  const contentStatusText = state.demoContentActive === false ? t.meta.reviewedStatus : t.meta.demoBanner;
 
   const titles = {
     terms: { ar: 'شروط الاستخدام', en: 'Terms of Use' },
@@ -268,8 +271,8 @@ export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }
               </p>
               <p>
                 {locale === 'ar'
-                  ? `2. حالة المحتوى الحالي: ${t.meta.demoBanner}.`
-                  : `2. Current Content Status: ${t.meta.demoBanner}.`}
+                  ? `2. حالة المحتوى الحالي: ${contentStatusText}.`
+                  : `2. Current Content Status: ${contentStatusText}.`}
               </p>
             </>
           )}

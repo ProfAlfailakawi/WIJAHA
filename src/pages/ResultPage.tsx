@@ -441,7 +441,11 @@ export function ResultPage() {
                 </span>
                 <span className="inline-flex items-center gap-2 text-xs text-[color:var(--primary-fg)]/80">
                   <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)]" aria-hidden="true" />
-                  {refining ? t.result.streaming.generating : t.result.demoRuleBadge}
+                  {refining
+                    ? t.result.streaming.generating
+                    : state.demoContentActive === false
+                      ? t.result.reviewedBadge
+                      : t.result.demoRuleBadge}
                 </span>
               </div>
 
@@ -698,7 +702,11 @@ export function ResultPage() {
                     {t.result.trust.basedOn} {result.trust.ruleIds.length} {t.result.trust.rulesCount}
                   </span>
                   <span aria-hidden="true">·</span>
-                  <span>{t.result.trust.demoNotice}</span>
+                  <span>
+                    {state.demoContentActive === false
+                      ? t.result.trust.reviewedNotice
+                      : t.result.trust.demoNotice}
+                  </span>
                 </div>
 
                 <button
@@ -794,7 +802,9 @@ export function ResultPage() {
         open={sourcesDrawerOpen}
         onClose={() => setSourcesDrawerOpen(false)}
         title={t.result.trust.sourcesBtn}
-        subtitle={t.result.trust.demoNotice}
+        subtitle={
+          state.demoContentActive === false ? t.result.trust.reviewedNotice : t.result.trust.demoNotice
+        }
       >
         <div className="space-y-3">
           {(result?.trust.sourcesDetail || []).map((src) => (

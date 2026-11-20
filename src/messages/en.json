@@ -2,6 +2,7 @@
   "meta": {
     "skipToContent": "Skip to main content",
     "demoBanner": "Preview Environment — All protocol rules and scenarios are flagged as 'Unapproved Demo Content'",
+    "reviewedStatus": "Protocol rules are approved by the protocol expert (project owner) and reviewed annually; outputs are advisory",
     "offlineBanner": "You are currently offline. Your draft input is preserved locally."
   },
   "nav": {
@@ -72,6 +73,7 @@
     "summaryTitle": "Top 3 Priorities Right Now",
     "highSensitivityAlert": "This is a high-sensitivity official occasion. The deliverables below are advisory; we recommend a senior protocol review before final sign-off.",
     "demoRuleBadge": "Unapproved Demo Content",
+    "reviewedBadge": "Expert-approved content",
     "levels": {
       "official": "Official",
       "customary": "Customary",
@@ -107,6 +109,7 @@
       "basedOn": "Grounded in",
       "rulesCount": "knowledge rules",
       "demoNotice": "demo preview rules (draft_demo)",
+      "reviewedNotice": "expert-approved rules",
       "unreviewedWarning": "Some items reflect general professional advice not tied to an approved rule — marked 'Advisory'.",
       "sourcesBtn": "View Sources & Rules",
       "helpfulPrompt": "Was this result helpful?",
