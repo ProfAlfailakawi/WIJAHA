@@ -3,6 +3,7 @@ import { computeDeterministicEmbedding, normalizeArabic } from '../shared/arabic
 import type { ScenarioNode, ScenarioRubric } from '../shared/types.ts';
 import { ARAB_COMMON_RULES } from './seed-arab-common.ts';
 import { ARAB_COUNTRY_RULES } from './seed-arab-countries.ts';
+import { ARAB_SCENARIOS } from './seed-arab-scenarios.ts';
 
 export interface SeedRuleDef {
   id: string;
@@ -1254,6 +1255,7 @@ export const SEED_SCENARIOS = [
     nodes: SCENARIO_2_NODES,
     rubric: SCENARIO_2_RUBRIC,
   },
+  ...ARAB_SCENARIOS,
 ];
 
 export const SEED_PLANS = [

@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts src/server/simulation/engine.test.ts src/server/ai/understanding.test.ts src/server/ai/intent-lexicon.test.ts src/server/ai/countries.test.ts src/server/knowledge/arab-pack.test.ts",
+    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts src/server/simulation/engine.test.ts src/server/ai/understanding.test.ts src/server/ai/intent-lexicon.test.ts src/server/ai/countries.test.ts src/server/knowledge/arab-pack.test.ts src/server/simulation/arab-scenarios.test.ts",
     "evals": "tsx evals/run-evals.ts",
     "test:integration": "tsx --test src/server/security-and-billing.test.ts tests/security-regressions.test.ts tests/build-assets.test.ts",
     "typecheck": "tsc --noEmit",
