@@ -79,6 +79,7 @@ import {
   RuleStatusSchema,
 } from './src/server/knowledge/lifecycle.ts';
 import { checkSharedRateLimit } from './src/server/security/rate-limit.ts';
+import { cleanName, gradeExam, signCertificate, verifyCertificate } from './src/server/certificate/certificate.ts';
 import {
   applySecurityHeadersMiddleware,
   injectNonceIntoHtml,
@@ -311,6 +312,47 @@ export async function buildExpressApp() {
       demoContentActive: await getDemoContentActive(),
       aiMode: getAiProviderStatus().mode,
     });
+  });
+
+  // Certificate: the exam is graded here (the answer key never leaves the server); a pass returns an HMAC-signed code.
+  app.post('/api/certificate/exam', async (req, res) => {
+    try {
+      const allowed = await checkSharedRateLimit(`cert_exam:${hashIp(req.ip)}`, 20, 60 * 60_000);
+      if (!allowed) {
+        sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+        return;
+      }
+      const answers = req.body?.answers;
+      if (!answers || typeof answers !== 'object') {
+        sendApiError(res, 400, 'INVALID_ANSWERS', 'errors.validationError');
+        return;
+      }
+      const grade = gradeExam(answers as Record<string, unknown>);
+      let code: string | undefined;
+      if (grade.passed) {
+        const name = cleanName(req.body?.name);
+        if (!name) {
+          sendApiError(res, 400, 'INVALID_NAME', 'errors.validationError');
+          return;
+        }
+        code = signCertificate(appEnv.sessionSecret, name, grade.correct, grade.total);
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ ...grade, code });
+    } catch {
+      sendApiError(res, 500, 'CERT_FAILED', 'home.networkError');
+    }
+  });
+
+  app.get('/api/certificate/verify', async (req, res) => {
+    const allowed = await checkSharedRateLimit(`cert_verify:${hashIp(req.ip)}`, 60, 60_000);
+    if (!allowed) {
+      sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+      return;
+    }
+    const v = verifyCertificate(appEnv.sessionSecret, String(req.query.code ?? ''));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(v ? { valid: true, ...v } : { valid: false });
   });
 
   // Public, read-only: one rule that is currently eligible (approved) with its cited references.

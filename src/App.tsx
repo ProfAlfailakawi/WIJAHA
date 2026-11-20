@@ -1,3 +1,10 @@
+import { ToolsHubPage } from './pages/tools/ToolsHubPage';
+import { LivePage } from './pages/tools/LivePage';
+import { VoicePage } from './pages/tools/VoicePage';
+import { PhotoCheckPage } from './pages/tools/PhotoCheckPage';
+import { OrgProtocolPage } from './pages/tools/OrgProtocolPage';
+import { LearnPage } from './pages/tools/LearnPage';
+import { VerifyPage } from './pages/tools/VerifyPage';
 import { VisualsPage } from './pages/VisualsPage';
 import { SeatingStudioPage } from './pages/SeatingStudioPage';
 import { OccasionsPage } from './pages/OccasionsPage';
@@ -75,6 +82,14 @@ export default function App() {
             <Route path="/visuals" element={<VisualsPage />} />
             <Route path="/seating" element={<SeatingStudioPage />} />
             <Route path="/occasions" element={<OccasionsPage />} />
+            <Route path="/tools" element={<ToolsHubPage />} />
+            <Route path="/live" element={<LivePage />} />
+            <Route path="/voice" element={<VoicePage />} />
+            <Route path="/photo-check" element={<PhotoCheckPage />} />
+            <Route path="/org-protocol" element={<OrgProtocolPage />} />
+            <Route path="/learn" element={<LearnPage />} />
+            <Route path="/verify" element={<VerifyPage />} />
+            <Route path="/verify/:code" element={<VerifyPage />} />
             <Route path="/practice" element={<PracticeListPage />} />
             <Route path="/practice/:scenarioId" element={<SimulationRunnerPage />} />
             <Route path="/practice/report/:runId" element={<SimulationReportPage />} />
