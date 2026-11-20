@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Radio, TriangleAlert } from 'lucide-react';
+import { Link2, Maximize2, Radio, TriangleAlert } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { AppShell } from '../../components/layout/AppShell';
 import { Dialog } from '../../components/ui/Primitives';
 import { tr } from '../../components/visuals/svg-kit.tsx';
@@ -15,8 +16,10 @@ function localInput(d: Date): string {
 export function LivePage() {
   const { locale } = useI18n();
   const ar = locale === 'ar';
-  const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
-  const [startStr, setStartStr] = useState(() => localInput(new Date(Date.now() + 130 * 60_000)));
+  const [params] = useSearchParams();
+  const [templateId, setTemplateId] = useState(() => (TEMPLATES.some((x) => x.id === params.get('t')) ? (params.get('t') as string) : TEMPLATES[0].id));
+  const [startStr, setStartStr] = useState(() => (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(params.get('s') ?? '') ? (params.get('s') as string) : localInput(new Date(Date.now() + 130 * 60_000))));
+  const [linkCopied, setLinkCopied] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [steps, setSteps] = useState<Step[]>([]);
   const [delayTotal, setDelayTotal] = useState(0);
@@ -55,6 +58,13 @@ export function LivePage() {
       /* unsupported or denied */
     }
   };
+  const shareLink = () => {
+    const s = new Date(startStr);
+    if (Number.isNaN(s.getTime())) return;
+    const eff = localInput(new Date(s.getTime() + delayTotal * 60_000));
+    const url = `${window.location.origin}/live?t=${encodeURIComponent(templateId)}&s=${encodeURIComponent(eff)}`;
+    void navigator.clipboard?.writeText(url).then(() => setLinkCopied(true));
+  };
   const fullscreen = () => {
     void keepAwake();
     void document.documentElement.requestFullscreen?.().catch(() => undefined);
@@ -85,7 +95,11 @@ export function LivePage() {
             {ar ? 'وقت بدء الفعالية (لحظة الوصول أو الافتتاح)' : 'Event start (arrival or opening moment)'}
             <input type="datetime-local" className={`${input} mt-1`} value={startStr} onChange={(e) => setStartStr(e.target.value)} data-testid="live-start" />
           </label>
-          <div className="flex items-end">
+          <div className="flex flex-wrap items-end gap-2">
+            <button type="button" className={btn} onClick={shareLink} data-testid="live-share">
+              <Link2 className="w-4 h-4" aria-hidden="true" />
+              {linkCopied ? (ar ? 'نُسخ الرابط' : 'Link copied') : ar ? 'انسخ رابط الجدول الحالي للفريق' : 'Copy current schedule link for the team'}
+            </button>
             <button type="button" className={btn} onClick={fullscreen} data-testid="live-fullscreen">
               <Maximize2 className="w-4 h-4" aria-hidden="true" />
               {ar ? 'ملء الشاشة وإبقاء الشاشة مضاءة' : 'Fullscreen and keep screen on'}

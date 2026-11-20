@@ -11,3 +11,10 @@
 Exam answer key: `src/server/certificate/certificate.ts` (never sent to the browser). Rate limits: 20 exam submissions/hour and 60 verifications/minute per IP.
 
 Tests: `src/shared/tools/*.test.ts`, `src/server/certificate/certificate.test.ts`, browser suite `scripts/e2e/ttest.cjs`.
+
+## Added later
+- `/event`: one event file (name, type, date, venue, host, dress code, RSVP) produces the invitation text (Arabic/English, Hijri date approximate), a calendar `.ics` with two reminders, a readiness list, and a clash check against partners' national/religious days (partners chosen in the radar) and weekends. Stored in the browser only.
+- `/live?t=<template>&s=<YYYY-MM-DDTHH:mm>`: shareable link. It carries the schedule at the moment of copying (including delays); it is not a live-synced session, so a later delay must be shared again.
+- `/review`: honest content-review status page (which sets are approved, which are AI drafts awaiting an expert).
+- Installable app (PWA): manifest, icons and a service worker; pages visited once open offline. API calls are never cached, so the exam and verification need a connection.
+- Not built (costs money, needs an owner decision): AI photo analysis and an AI-driven conversational guest.

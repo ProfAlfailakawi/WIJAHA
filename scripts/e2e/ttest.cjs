@@ -152,6 +152,73 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
     log('a partial exam does not pass and returns no code', lone.passed === false && !lone.code);
   }
 
+  // ------------------------------------------------------------- event file
+  await p.goto(BASE + '/event', { waitUntil: 'networkidle' });
+  await p.evaluate(() => localStorage.removeItem('wijaha.event.v1'));
+  await p.reload({ waitUntil: 'networkidle' });
+  const readyTxt = async () => (await p.locator('#ready-h').textContent()) || '';
+  log('an empty event file is mostly not ready', /1 من 8/.test(await readyTxt()), await readyTxt());
+  await p.fill('[data-testid="ev-name"]', 'حفل استقبال وفد');
+  await p.fill('[data-testid="ev-venue"]', 'فندق الجزيرة');
+  await p.fill('[data-testid="ev-hostTitle"]', 'سعادة');
+  await p.fill('[data-testid="ev-hostName"]', 'خالد المنصور');
+  await p.fill('[data-testid="ev-dress"]', 'الزي الرسمي');
+  await p.fill('[data-testid="ev-rsvp"]', 'rsvp@example.org');
+  await p.fill('[data-testid="ev-start"]', '2031-03-10T19:30');
+  const inv = await p.locator('[data-testid="ev-invitation"]').textContent();
+  log('the invitation is built from the fields', /يتشرف سعادة خالد المنصور/.test(inv) && /19:30/.test(inv) && /الموافق/.test(inv));
+  log('readiness improves', /[67] من 8/.test(await readyTxt()), await readyTxt());
+  await p.fill('[data-testid="ev-start"]', '2031-02-25T19:30');
+  await p.waitForSelector('[data-testid="ev-clash"]', { timeout: 3000 }).catch(() => undefined);
+  log('Kuwait National Day is flagged as a clash', (await p.locator('[data-testid="ev-clash"]').count()) === 1, (await p.locator('[data-testid="ev-clash"]').textContent().catch(() => '')) || '');
+  const [d3] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="ev-ics"]')]);
+  const icsf = path.join(tmp, 'ev.ics');
+  await d3.saveAs(icsf);
+  const icsTxt = fs.readFileSync(icsf, 'utf8');
+  log('event .ics is valid with reminders', /BEGIN:VCALENDAR/.test(icsTxt) && /DTSTART:20310225T193000/.test(icsTxt) && (icsTxt.match(/VALARM/g) || []).length === 4);
+  await p.reload({ waitUntil: 'networkidle' });
+  log('the event is remembered locally', (await p.inputValue('[data-testid="ev-name"]')) === 'حفل استقبال وفد');
+  await p.click('[data-testid="ev-live"]');
+  await p.waitForURL(/\/live\?t=/);
+  log('the live page opens with the event start', (await p.inputValue('[data-testid="live-start"]')) === '2031-02-25T19:30');
+  await p.click('[data-testid="live-delay-10"]');
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined);
+  await p.click('[data-testid="live-share"]');
+  const link = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '');
+  log('the team link carries the delayed start', /\/live\?t=official-reception&s=2031-02-25T19%3A40/.test(link), link);
+  await axe('live (with params)');
+  await p.goto(BASE + '/event', { waitUntil: 'networkidle' });
+  await axe('event');
+  await overflow('event');
+  await p.goto(BASE + '/review', { waitUntil: 'networkidle' });
+  const rv = await p.locator('[data-testid="review-list"]').textContent();
+  log('the review page is honest about drafts', /مسودة/.test(rv) && /معتمد/.test(rv) && /لم تراجعها جهة خارجية/.test(rv));
+  await axe('review');
+
+  // ------------------------------------------------------------- PWA
+  if (!/127\.0\.0\.1|localhost/.test(BASE)) {
+    const man = await p.evaluate(async () => (await fetch('/manifest.webmanifest')).json());
+    log('web app manifest is valid', man.display === 'standalone' && man.icons.length >= 2, man.name);
+    for (const ic of ['/icon-192.png', '/icon-512.png']) {
+      const ct = await p.evaluate(async (u) => (await fetch(u)).headers.get('content-type'), ic);
+      log(`${ic} is served as an image`, /image\/png/.test(ct || ''), ct);
+    }
+    await p.goto(BASE + '/live', { waitUntil: 'networkidle' });
+    await p.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.goto(BASE + '/learn', { waitUntil: 'networkidle' });
+    await p.goto(BASE + '/live', { waitUntil: 'networkidle' });
+    log('a service worker controls the page', await p.evaluate(() => !!navigator.serviceWorker.controller));
+    await ctx.setOffline(true);
+    await p.goto(BASE + '/learn', { waitUntil: 'domcontentloaded' }).catch(() => undefined);
+    await p.waitForSelector('[data-testid^="module-"]', { timeout: 8000 }).catch(() => undefined);
+    log('a visited tool opens offline', (await p.locator('[data-testid^="module-"]').count()) === 6);
+    await p.goto(BASE + '/live', { waitUntil: 'domcontentloaded' }).catch(() => undefined);
+    await p.waitForSelector('[data-testid="live-status"]', { timeout: 8000 }).catch(() => undefined);
+    log('the live run sheet works offline', (await p.locator('[data-testid="live-status"]').count()) === 1);
+    await ctx.setOffline(false);
+  }
+
   // ------------------------------------------------------------- English + mobile
   for (const [route, re] of [['/live', /Protocol LIVE|event-day/i], ['/learn', /Learn|certificate/i], ['/voice', /Practise|Voice/i], ['/photo-check', /hall|invitation/i], ['/org-protocol', /manual/i]]) {
     await p.goto(BASE + route, { waitUntil: 'networkidle' });
