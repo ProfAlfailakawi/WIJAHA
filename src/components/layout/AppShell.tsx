@@ -2,14 +2,18 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Building2,
+  ClipboardCheck,
   FolderKanban,
   Globe,
+  GraduationCap,
   LogOut,
   Menu,
   Moon,
+  Plus,
   ShieldCheck,
   Sun,
   User,
+  Users,
   X,
 } from 'lucide-react';
 import { BRAND } from '../../config/brand';
@@ -243,11 +247,34 @@ export function AppShell({
     setTheme(resolvedDark ? 'light' : 'dark');
   };
 
+  // Short page name for the iPhone Duo clock strip and the two-pane heading.
+  const duoTitle = (() => {
+    const p = location.pathname;
+    const pairs: Array<[string, string]> = [
+      ['/practice', t.nav.practice],
+      ['/check', t.nav.checkPlan],
+      ['/experts', t.nav.experts],
+      ['/request', t.nav.experts],
+      ['/pricing', t.nav.pricing],
+      ['/projects', t.nav.myProjects],
+      ['/account', t.nav.account],
+      ['/org', t.nav.organization],
+      ['/admin', t.nav.admin],
+      ['/about', t.footer.about],
+      ['/methodology', t.footer.methodology],
+      ['/legal/privacy', t.footer.privacy],
+      ['/legal/terms', t.footer.terms],
+      ['/legal/disclaimer', t.footer.disclaimer],
+    ];
+    const hit = pairs.find(([prefix]) => p.startsWith(prefix));
+    return hit ? hit[1] : locale === 'ar' ? BRAND.nameAr : BRAND.nameEn;
+  })();
+
   // Spec §7: the header carries no menu. Other destinations live in the footer and inside results.
   const navItems = state.authenticated ? [{ to: '/projects', label: t.nav.myProjects }] : [];
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)]">
+    <div className="wj-shell min-h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)]">
       <a href="#main-content" className="skip-link">
         {t.meta.skipToContent}
       </a>
@@ -364,7 +391,7 @@ export function AppShell({
               onClick={() => setMobileMenuOpen((v) => !v)}
               aria-expanded={mobileMenuOpen}
               aria-label={locale === 'ar' ? 'القائمة والحساب' : 'Menu and account'}
-              className="md:hidden min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] cursor-pointer"
+              className="wj-menu-btn md:hidden min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -373,7 +400,7 @@ export function AppShell({
 
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-[var(--line)] bg-[var(--surface)] px-4 py-4 space-y-2 shadow-lg">
+          <div className="wj-drawer md:hidden border-t border-[var(--line)] bg-[var(--surface)] px-4 py-4 space-y-2 shadow-lg">
             {state.authenticated && state.actor ? (
               <div className="pb-3 mb-2 border-b border-[var(--line)] flex items-center justify-between gap-2">
                 <div>
@@ -469,11 +496,11 @@ export function AppShell({
         )}
       </header>
 
-      <main id="main-content" className="flex-1 flex flex-col">
+      <main id="main-content" className="wj-main flex-1 flex flex-col">
         {children}
       </main>
 
-      <footer className="no-print border-t border-[var(--line)]/80 bg-[var(--bg)] py-6 mt-auto">
+      <footer className="wj-footer no-print border-t border-[var(--line)]/80 bg-[var(--bg)] py-6 mt-auto">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--ink-3)]">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-5 gap-y-2">
             <Link to="/about" className="hover:text-[var(--ink)] transition-colors">
@@ -523,6 +550,59 @@ export function AppShell({
           </p>
         </div>
       </footer>
+
+      {/* iPhone Duo only (hidden elsewhere by src/styles/duo.css): the page title for the
+          clock strip, one row of destinations with the menu, and a coloured «+» that starts
+          a new occasion. In the app it becomes glass capsules; it replaces, never repeats,
+          the header menu. */}
+      <div className="wj-duo-dock no-print">
+        <span className="wj-duo-title">{duoTitle}</span>
+        <nav
+          className="wj-duo-bar"
+          aria-label={locale === 'ar' ? 'شريط التنقل' : 'Navigation bar'}
+        >
+          {[
+            { to: '/practice', label: t.nav.practice, icon: GraduationCap },
+            { to: '/check', label: t.nav.checkPlan, icon: ClipboardCheck },
+            { to: '/experts', label: t.nav.experts, icon: Users },
+          ].map((item) => {
+            const active = location.pathname.startsWith(item.to);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={active ? 'page' : undefined}
+                aria-label={item.label}
+                className="wj-duo-tab"
+              >
+                <Icon className="w-5 h-5" aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            className="wj-duo-tab"
+            aria-expanded={mobileMenuOpen}
+            aria-label={locale === 'ar' ? 'القائمة' : 'Menu'}
+            onClick={() => {
+              setMobileMenuOpen((v) => !v);
+              window.scrollTo({ top: 0 });
+            }}
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
+            <span>{locale === 'ar' ? 'القائمة' : 'Menu'}</span>
+          </button>
+        </nav>
+        <Link
+          to="/"
+          className="wj-duo-new"
+          aria-label={locale === 'ar' ? 'مناسبة جديدة' : 'New occasion'}
+        >
+          <Plus className="w-6 h-6" aria-hidden="true" />
+        </Link>
+      </div>
 
       <SignInModal />
     </div>

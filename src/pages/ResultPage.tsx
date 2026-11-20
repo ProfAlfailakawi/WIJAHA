@@ -685,7 +685,7 @@ export function ResultPage() {
             </section>
 
             {/* Mobile Sticky Primary CTA */}
-            <div className="no-print sm:hidden fixed bottom-0 inset-x-0 z-20 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-xs p-3">
+            <div className="wj-result-cta no-print sm:hidden fixed bottom-0 inset-x-0 z-20 border-t border-[var(--line)] bg-[var(--surface)]/95 backdrop-blur-xs p-3">
               <Button
                 variant="primary"
                 className="w-full"
