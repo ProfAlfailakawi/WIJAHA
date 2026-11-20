@@ -800,6 +800,7 @@ export async function executeWijahaPipeline(params: {
 
   // Try optional live Gemini generation if configured; otherwise build rich deterministic blocks from retrievedRules
   const providerStatus = getAiProviderStatus();
+  let llmPayload: { title?: string; summary?: string[]; blocks: ResultBlock[] } | null = null;
   const llmBlockTypes = (ALLOWED_BLOCKS_BY_INTENT[entities.intent] ?? ['answer']).filter((t) => t in LLM_BLOCK_SPECS);
   if (providerStatus.mode !== 'mock' && llmBlockTypes.length > 0) {
     try {
@@ -828,33 +829,11 @@ export async function executeWijahaPipeline(params: {
       }
       const validBlocks = candidateParse.success ? candidateParse.data.blocks : [];
       if (candidateParse.success && validBlocks.length > 0) {
-        const merged: WijahaResult = {
-          id: resultId,
-          locale,
-          title: (candidateParse.data.title || params.rawQuery).slice(0, 60),
-          intent: entities.intent,
-          context,
-          assumptions,
-          clarification,
-          summary: (candidateParse.data.summary || []).slice(0, 3),
+        llmPayload = {
+          title: candidateParse.data.title,
+          summary: candidateParse.data.summary,
           blocks: validBlocks,
-          primaryAction: {
-            id: 'export_pdf',
-            label: locale === 'ar' ? 'حمّل الخطة للفريق' : 'Download Plan (PDF)',
-          },
-          secondaryActions: [
-            { id: 'save_project', label: locale === 'ar' ? 'احفظ كمشروع' : 'Save as Project' },
-            { id: 'practice', label: locale === 'ar' ? 'تدرّب على هذا الموقف' : 'Practice Scenario', targetUrl: '/practice' },
-          ],
-          trust: {
-            ruleIds: [],
-            reviewedCount: 0,
-            demoCount: 0,
-            unreviewedClaims: 0,
-            sensitivity: entities.sensitivity,
-          },
         };
-        return verifyAndHardenResultPure(merged, retrievedRules, params.expertSuggestionsEnabled);
       }
     } catch (err) {
       console.warn('Live LLM call fell back to deterministic builder:', err instanceof Error ? err.message : 'unknown');
@@ -1190,6 +1169,17 @@ export async function executeWijahaPipeline(params: {
       sensitivity: entities.sensitivity,
     },
   };
+
+  if (llmPayload) {
+    // The model writes the content; deterministic builders keep what they do best (seating geometry).
+    const seatingBlocks = rawResult.blocks.filter((b) => b.type === 'seating');
+    const modelHasSeating = llmPayload.blocks.some((b) => b.type === 'seating');
+    rawResult.title = (llmPayload.title || params.rawQuery).slice(0, 60);
+    if (llmPayload.summary && llmPayload.summary.length > 0) {
+      rawResult.summary = llmPayload.summary.slice(0, 3);
+    }
+    rawResult.blocks = [...llmPayload.blocks, ...(modelHasSeating ? [] : seatingBlocks)];
+  }
 
   return verifyAndHardenResultPure(
     rawResult,
