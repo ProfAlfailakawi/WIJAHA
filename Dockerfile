@@ -10,6 +10,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Public Firebase web config (not secret) for Google sign-in on the preview project.
+ENV VITE_FIREBASE_API_KEY=AIzaSyATxjS7mHTDGG9K7QDH3alG6QKNKdd55yI \
+    VITE_FIREBASE_AUTH_DOMAIN=wijaha.web.app \
+    VITE_FIREBASE_PROJECT_ID=wijaha \
+    VITE_FIREBASE_APP_ID=1:269097828743:web:60a9862ec5db4bda1f9322
 RUN npm run build
 ENV NODE_ENV=development \
     SERVE_STATIC=true \
