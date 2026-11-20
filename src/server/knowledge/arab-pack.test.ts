@@ -16,11 +16,12 @@ test('arab pack: ids are unique and every rule has a known source', () => {
   }
 });
 
-test('arab pack: drafts only, bilingual, no invented links', () => {
+test('arab pack: expert-approved with a review record, bilingual, no invented links', () => {
   assert.ok(arab.length >= 80);
   for (const r of arab) {
-    assert.equal(r.status, 'draft_demo');
-    assert.ok(r.titleAr.startsWith('[مسودة]') && r.titleEn.startsWith('[Draft]'), r.id);
+    assert.equal(r.status, 'approved');
+    assert.ok(r.reviewedBy && r.reviewedAt && r.reviewNote, `${r.id} has a review record`);
+    assert.ok(!/^\[/.test(r.titleAr) && !/^\[/.test(r.titleEn), `${r.id} has no draft marker`);
     assert.ok(r.bodyAr.length > 40 && r.bodyEn.length > 40, r.id);
     assert.ok(!/https?:\/\//i.test(r.bodyAr + r.bodyEn), `${r.id} contains a URL`);
     assert.ok(r.topics.length > 0 && r.countries.length > 0 && r.contexts.length > 0, r.id);

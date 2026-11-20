@@ -259,7 +259,14 @@ export async function seedDemoData(): Promise<void> {
     .onConflictDoNothing();
 
   for (const s of SEED_SOURCES) {
-    await db.insert(sources).values(s).onConflictDoNothing();
+    await db
+      .insert(sources)
+      .values(s)
+      .onConflictDoUpdate({
+        target: sources.id,
+        set: { title: s.title, publisher: s.publisher, isDemo: s.isDemo },
+        setWhere: eq(sources.isDemo, true),
+      });
   }
 
   await db
@@ -304,13 +311,30 @@ export async function seedDemoData(): Promise<void> {
         exceptions: r.exceptions,
         status: r.status,
         authorUid: r.authorUid,
+        reviewedBy: r.reviewedBy,
+        reviewedAt: r.reviewedAt,
+        reviewNote: r.reviewNote,
         reviewDueAt: r.reviewDueAt,
         version: r.version,
         embeddingAr: r.embeddingAr,
         embeddingEn: r.embeddingEn,
         normalizedSearchText: r.normalizedSearchText,
       })
-      .onConflictDoNothing();
+      // Existing rows are upgraded only while still unreviewed; admin edits and later reviews are never overwritten.
+      .onConflictDoUpdate({
+        target: knowledgeRules.id,
+        set: {
+          titleAr: r.titleAr,
+          titleEn: r.titleEn,
+          status: r.status,
+          reviewedBy: r.reviewedBy,
+          reviewedAt: r.reviewedAt,
+          reviewNote: r.reviewNote,
+          reviewDueAt: r.reviewDueAt,
+          sources: r.sources,
+        },
+        setWhere: eq(knowledgeRules.status, 'draft_demo'),
+      });
   }
 
   for (const sc of SEED_SCENARIOS) {

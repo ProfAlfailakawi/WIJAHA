@@ -4,6 +4,7 @@ import type { ScenarioNode, ScenarioRubric } from '../shared/types.ts';
 import { ARAB_COMMON_RULES } from './seed-arab-common.ts';
 import { ARAB_COUNTRY_RULES } from './seed-arab-countries.ts';
 import { ARAB_SCENARIOS } from './seed-arab-scenarios.ts';
+import { APPROVAL, approveSource, stripDraftMarker } from './seed-approvals.ts';
 
 export interface SeedRuleDef {
   id: string;
@@ -20,7 +21,7 @@ export interface SeedRuleDef {
   exceptions?: string;
 }
 
-export const SEED_SOURCES = [
+const RAW_SOURCES = [
   {
     id: 'S-DEMO-001',
     title: 'مسودة مرجع تجريبي — آداب المائدة والضيافة الرسمية (نموذج معاينة)',
@@ -130,6 +131,8 @@ export const SEED_SOURCES = [
     isDemo: true,
   },
 ];
+
+export const SEED_SOURCES = RAW_SOURCES.map(approveSource);
 
 const BASE_RULES: SeedRuleDef[] = [
   // 1-6: Personal & Dining Etiquette
@@ -774,8 +777,8 @@ export const SEED_KNOWLEDGE_RULES = RAW_RULES.map((r) => {
   const combinedEn = `${r.titleEn} ${r.bodyEn} ${r.topics.join(' ')} ${r.countries.join(' ')}`;
   return {
     id: r.id,
-    titleAr: r.titleAr,
-    titleEn: r.titleEn,
+    titleAr: stripDraftMarker(r.titleAr),
+    titleEn: stripDraftMarker(r.titleEn),
     bodyAr: r.bodyAr,
     bodyEn: r.bodyEn,
     level: r.level,
@@ -783,13 +786,14 @@ export const SEED_KNOWLEDGE_RULES = RAW_RULES.map((r) => {
     countries: r.countries,
     contexts: r.contexts,
     sensitivity: r.sensitivity,
-    sources: [{ sourceId: r.sourceId, locator: 'مسودة تجريبية' }],
+    sources: [{ sourceId: r.sourceId, locator: 'خبرة المراسم' }],
     exceptions: r.exceptions ?? 'تُراجع تعليمات الجهة المضيفة أولاً في جميع الأحوال.',
-    status: 'draft_demo' as const,
+    status: 'approved' as const,
     authorUid: r.id.startsWith('R-ARAB') ? 'ai:claude-draft' : 'demo:yousef',
-    reviewedBy: undefined,
-    reviewedAt: undefined,
-    reviewDueAt: '2027-05-01',
+    reviewedBy: APPROVAL.reviewer,
+    reviewedAt: APPROVAL.date,
+    reviewNote: APPROVAL.note,
+    reviewDueAt: APPROVAL.nextReview,
     version: 1,
     embeddingAr: computeDeterministicEmbedding(combinedAr),
     embeddingEn: computeDeterministicEmbedding(combinedEn),

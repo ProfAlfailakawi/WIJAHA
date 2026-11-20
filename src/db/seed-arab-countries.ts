@@ -7,7 +7,7 @@ import type { SeedRuleDef } from './seed-data.ts';
  */
 
 type Row = Omit<SeedRuleDef, 'id' | 'sourceId'>;
-const VERIFY = 'تُراجَع الجهة المضيفة ومراسم الدولة قبل الاعتماد؛ هذه مسودة غير معتمدة.';
+const VERIFY = 'تتغير الأنظمة والتواريخ؛ تُراجَع الجهة المضيفة ومراسم الدولة قبل التنفيذ.';
 
 let counter = 100;
 const r = (
@@ -56,7 +56,7 @@ export const ARAB_COUNTRY_RULES: SeedRuleDef[] = [
     'الكحول في الكويت', 'Alcohol in Kuwait',
     'لا تُقدَّم المشروبات الكحولية في الكويت في الفعاليات الرسمية ولا في الأماكن العامة، ولا يجوز استيرادها. تُجهَّز مشروبات بديلة راقية. وتُراعى أنظمة الجهر بالأكل والشرب في نهار رمضان في الأماكن العامة.',
     'Alcoholic drinks are not served at official events or in public places in Kuwait, and may not be imported. Prepare refined non-alcoholic alternatives. Observe the rules on eating and drinking openly in public during Ramadan daytime.',
-    'يتحقق من النظام الساري قبل أي فعالية؛ هذه مسودة غير معتمدة.'),
+    'يُتحقق من النظام الساري قبل أي فعالية.'),
   r(['KW'], ['titles', 'correspondence'], OFFICIAL, 'customary', 'high',
     'ألقاب المخاطبة في الكويت', 'Forms of address in Kuwait',
     'يُخاطَب الأمير بـ«صاحب السمو أمير البلاد»، وولي العهد بـ«سمو ولي العهد»، ويُخاطَب الوزراء بـ«معالي»، والسفراء والوكلاء بـ«سعادة». ويُسبق اسم أفراد الأسرة الحاكمة بـ«الشيخ». تُراجَع الصيغة الدقيقة من الديوان الأميري أو وزارة الخارجية.',
@@ -79,7 +79,7 @@ export const ARAB_COUNTRY_RULES: SeedRuleDef[] = [
     'الكحول والضوابط الغذائية في السعودية', 'Alcohol and dietary rules in Saudi Arabia',
     'تُمنع المشروبات الكحولية في السعودية ولا تُقدَّم في أي فعالية رسمية. يُقدَّم الطعام حلالاً، وتُجهَّز مشروبات بديلة، ويُراعى الامتناع عن الجهر بالأكل في نهار رمضان في الأماكن العامة.',
     'Alcohol is prohibited in Saudi Arabia and is not served at any official event. Food is halal, non-alcoholic alternatives are prepared, and eating openly in public during Ramadan daytime is avoided.',
-    'يتحقق من النظام الساري قبل أي فعالية؛ هذه مسودة غير معتمدة.'),
+    'يُتحقق من النظام الساري قبل أي فعالية.'),
   r(['SA'], ['etiquette', 'communication', 'visit_program'], OFFICIAL, 'advisory', 'medium',
     'الأعمال والمجلس في السعودية', 'Business and majlis culture in Saudi Arabia',
     'يُرحَّب بالضيف بالقهوة والتمر، وتُبنى العلاقة قبل الأعمال، وقد يحضر الاجتماع أكثر من شخص بصفة غير رسمية. تتفاوت درجة الانفتاح في اللقاءات المختلطة بحسب الجهة والمكان، فيُسأل المضيف عن الترتيب المناسب. تُتجنَّب الموضوعات السياسية والدينية الحساسة.',
@@ -129,7 +129,7 @@ export const ARAB_COUNTRY_RULES: SeedRuleDef[] = [
     'الكحول في قطر', 'Alcohol in Qatar',
     'تُنظَّم المشروبات الكحولية في قطر بصرامة ولا تُقدَّم في الفعاليات الرسمية عادةً. تُجهَّز مشروبات بديلة، ويُراجَع ترخيص المكان إن طُلبت خدمة خاصة.',
     'Alcohol is tightly regulated in Qatar and is not usually served at official events. Prepare non-alcoholic alternatives, and check the venue\'s license if a special service is requested.',
-    'يتحقق من النظام الساري قبل أي فعالية؛ هذه مسودة غير معتمدة.'),
+    'يُتحقق من النظام الساري قبل أي فعالية.'),
   r(['QA'], ['hospitality', 'etiquette'], HOSP, 'customary', 'low',
     'الضيافة والمجلس في قطر', 'Hospitality and the majlis in Qatar',
     'تقوم الضيافة القطرية على القهوة والتمر واحترام كبار السن، ويُسلَّم على الحاضرين في المجلس. يُراعى اللباس المحتشم والالتزام بالمواعيد وعدم تصوير أحد دون إذن.',
@@ -152,7 +152,7 @@ export const ARAB_COUNTRY_RULES: SeedRuleDef[] = [
     'الكحول في البحرين', 'Alcohol in Bahrain',
     'تُقدَّم المشروبات الكحولية في أماكن مرخّصة كبعض الفنادق، بينما تقتصر الفعاليات الحكومية الرسمية عادةً على المشروبات غير الكحولية. يُسأل المضيف عن سياسة الفعالية.',
     'Alcohol is available in licensed venues such as some hotels, while official government events usually serve only non-alcoholic drinks. Ask the host about the event\'s policy.',
-    'يتحقق من النظام الساري قبل أي فعالية؛ هذه مسودة غير معتمدة.'),
+    'يُتحقق من النظام الساري قبل أي فعالية.'),
 
   // ------------------------------------------------------------- Oman
   r(['OM'], ['titles', 'correspondence'], OFFICIAL, 'customary', 'high',
