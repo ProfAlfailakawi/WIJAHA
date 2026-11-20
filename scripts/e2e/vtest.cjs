@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const AxeBuilder = require('@axe-core/playwright').default;
 const fs = require('fs');
-const BASE = process.argv[2] || 'http://127.0.0.1:5199';
+const BASE = process.argv[2] || (process.env.BASE || 'http://127.0.0.1:5199');
 const out = [];
 const log = (n, ok, d = '') => { out.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 

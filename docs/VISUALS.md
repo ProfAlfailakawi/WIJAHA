@@ -18,3 +18,9 @@
 - فحوص المتصفح في `scripts/e2e/`.
 
 حدود: الأعلام مجرّدة (ليست أعلاماً حقيقية) والتفاصيل الدقيقة تُعتمد من مراسم الجهة المضيفة. مخطط الجلوس يعتمد عدد الضيوف ولا يستورد قوائم Excel بعد.
+
+## Seating studio (`/seating`) and Occasions radar (`/occasions`)
+
+- **Studio**: paste or import Excel/CSV (real .xlsx read in-browser via fflate), guests ordered by a title-based precedence suggestion (advisory only, confirm with the host's protocol office), drag seats to swap, warnings for inverted precedence, A4 name cards (PNG), plan PNG and order CSV. Data stays in the browser (localStorage).
+- **Radar**: national/religious days for chosen partner countries, greeting drafts, `.ics` export with reminders. Hijri dates are computed with Intl `islamic-umalqura` and are approximate (moon sighting); some national dates are unverified.
+- Tests: `scripts/e2e/stest.cjs` (30 checks), plus unit tests for precedence, guest-import and occasions.
