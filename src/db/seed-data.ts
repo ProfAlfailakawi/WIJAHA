@@ -132,7 +132,42 @@ const RAW_SOURCES = [
   },
 ];
 
-export const SEED_SOURCES = RAW_SOURCES.map(approveSource);
+/** Externally verifiable references found on 2026-11-20 (official portals where available; secondary otherwise). */
+export const VERIFIED_SOURCES = [
+  { id: 'S-VER-001', title: 'حكومة الإمارات — ساعات العمل في القطاع العام (أسبوع العمل وعطلة السبت والأحد)', publisher: 'البوابة الرسمية لحكومة دولة الإمارات (u.ae)', type: 'official', url: 'https://u.ae/en/information-and-services/jobs/Sector-of-employment/working-in-uae-government-sector/working-hours-in-the-public-sector', accessedAt: '2026-11-20', reliability: 'primary', isDemo: false },
+  { id: 'S-VER-002', title: 'Foreign travel advice: Kuwait — safety and security (alcohol, local laws)', publisher: 'GOV.UK Foreign, Commonwealth & Development Office', type: 'official', url: 'https://www.gov.uk/foreign-travel-advice/kuwait/safety-and-security', accessedAt: '2026-11-20', reliability: 'primary', isDemo: false },
+  { id: 'S-VER-003', title: 'Kuwait warns of 100-dinar fine, jail for public fasting violations (Law No. 44 of 1968)', publisher: 'Gulf News', type: 'news', url: 'https://gulfnews.com/world/gulf/kuwait/kuwait-warns-of-100-dinar-fine-jail-for-public-fasting-violations-1.500052806', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-004', title: 'UAE emirate-by-emirate alcohol regulations guide', publisher: 'Gulf News', type: 'news', url: 'https://gulfnews.com/living-in-uae/ask-us/do-i-need-an-alcohol-licence-a-guide-to-uaes-emirate-by-emirate-alcohol-regulations-2024-1.1731679023575', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-005', title: 'Law of the Flag of Saudi Arabia (flags bearing the Shahada, half-mast, disposable items)', publisher: 'Saudipedia', type: 'reference', url: 'https://saudipedia.com/en/law-of-the-flag-of-saudi-arabia', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-006', title: 'Saudi Arabia public holidays: Founding Day 22 Feb, National Day 23 Sep; Friday–Saturday weekend', publisher: 'timeanddate.com', type: 'reference', url: 'https://timeanddate.com/holidays/saudi-arabia/founding-day', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-007', title: 'Kuwait National Day (25 Feb) and Liberation Day (26 Feb) public holidays', publisher: 'Gulf News', type: 'news', url: 'https://gulfnews.com/world/gulf/kuwait/kuwait-declares-two-day-public-holiday-for-national-liberation-day-1.500439097', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-008', title: 'Oman National Day holidays announced (dates are set annually and may be moved)', publisher: 'Gulf News', type: 'news', url: 'https://gulfnews.com/world/gulf/oman/national-day-holidays-announced-in-oman-for-public-private-sectors-1.500339433', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-009', title: 'Qatar National Day: Sunday, Monday official holidays (holiday moved when 18 December falls on a weekend)', publisher: 'Gulf Times', type: 'news', url: 'https://www.gulf-times.com/story/575039/qatar-national-day-sunday-monday-official-holidays', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-010', title: 'Bahrain National Day (16 Dec) and Accession Day (17 Dec) public holidays', publisher: 'The Daily Tribune — Kingdom of Bahrain', type: 'news', url: 'https://www.newsofbahrain.com/bahrain/123172.html', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-011', title: 'Jordan: official holidays announced for Independence Day (25 May)', publisher: 'Petra — Jordan News Agency', type: 'news', url: 'https://petra.gov.jo/offiria/index.php/en/news/official-holidays-announced-for-eid-al-adha-independence-day', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+  { id: 'S-VER-012', title: 'Lebanon declares 23 November 2026 a public holiday for Independence Day (Memorandum No. 25/2026)', publisher: 'legit.ng (reporting the Prime Minister\'s Office announcement)', type: 'news', url: 'https://www.legit.ng/world/asia/1739981-lebanon-declares-november-23-public-holiday-mark-independence-day-2026/', accessedAt: '2026-11-20', reliability: 'secondary', isDemo: false },
+] as const;
+
+export const SEED_SOURCES = [
+  ...RAW_SOURCES.map(approveSource),
+  ...VERIFIED_SOURCES.map((v) => ({ ...v, publishedAt: undefined as string | undefined })),
+];
+
+/** Extra verified references attached to specific rules (in addition to their internal source). */
+const VERIFIED_RULE_REFS: Record<string, string[]> = {
+  'R-ARAB-008': ['S-VER-001'],
+  'R-ARAB-112': ['S-VER-001', 'S-VER-004'],
+  'R-ARAB-114': ['S-VER-004'],
+  'R-ARAB-102': ['S-VER-007'],
+  'R-ARAB-103': ['S-VER-002', 'S-VER-003'],
+  'R-ARAB-107': ['S-VER-006'],
+  'R-ARAB-110': ['S-VER-005'],
+  'R-ARAB-118': ['S-VER-009'],
+  'R-ARAB-122': ['S-VER-010'],
+  'R-ARAB-126': ['S-VER-008'],
+  'R-ARAB-136': ['S-VER-011'],
+  'R-ARAB-140': ['S-VER-012'],
+};
 
 const BASE_RULES: SeedRuleDef[] = [
   // 1-6: Personal & Dining Etiquette
@@ -786,7 +821,10 @@ export const SEED_KNOWLEDGE_RULES = RAW_RULES.map((r) => {
     countries: r.countries,
     contexts: r.contexts,
     sensitivity: r.sensitivity,
-    sources: [{ sourceId: r.sourceId, locator: 'خبرة المراسم' }],
+    sources: [
+      { sourceId: r.sourceId, locator: 'خبرة المراسم' },
+      ...(VERIFIED_RULE_REFS[r.id] ?? []).map((sourceId) => ({ sourceId, locator: 'تحقق 2026-11-20' })),
+    ],
     exceptions: r.exceptions ?? 'تُراجع تعليمات الجهة المضيفة أولاً في جميع الأحوال.',
     status: 'approved' as const,
     authorUid: r.id.startsWith('R-ARAB') ? 'ai:claude-draft' : 'demo:yousef',

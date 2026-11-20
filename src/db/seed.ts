@@ -264,8 +264,14 @@ export async function seedDemoData(): Promise<void> {
       .values(s)
       .onConflictDoUpdate({
         target: sources.id,
-        set: { title: s.title, publisher: s.publisher, isDemo: s.isDemo },
-        setWhere: eq(sources.isDemo, true),
+        set: {
+          title: s.title,
+          publisher: s.publisher,
+          isDemo: s.isDemo,
+          type: s.type,
+          reliability: s.reliability,
+          url: 'url' in s ? (s.url as string) : null,
+        },
       });
   }
 
@@ -320,20 +326,32 @@ export async function seedDemoData(): Promise<void> {
         embeddingEn: r.embeddingEn,
         normalizedSearchText: r.normalizedSearchText,
       })
-      // Existing rows are upgraded only while still unreviewed; admin edits and later reviews are never overwritten.
+      // Seed-managed content is refreshed only while an admin has never touched the row (version 1);
+      // any admin edit or status change bumps the version and is never overwritten.
       .onConflictDoUpdate({
         target: knowledgeRules.id,
         set: {
           titleAr: r.titleAr,
           titleEn: r.titleEn,
+          bodyAr: r.bodyAr,
+          bodyEn: r.bodyEn,
+          level: r.level,
+          topics: r.topics,
+          countries: r.countries,
+          contexts: r.contexts,
+          sensitivity: r.sensitivity,
+          sources: r.sources,
+          exceptions: r.exceptions,
           status: r.status,
           reviewedBy: r.reviewedBy,
           reviewedAt: r.reviewedAt,
           reviewNote: r.reviewNote,
           reviewDueAt: r.reviewDueAt,
-          sources: r.sources,
+          embeddingAr: r.embeddingAr,
+          embeddingEn: r.embeddingEn,
+          normalizedSearchText: r.normalizedSearchText,
         },
-        setWhere: eq(knowledgeRules.status, 'draft_demo'),
+        setWhere: eq(knowledgeRules.version, 1),
       });
   }
 

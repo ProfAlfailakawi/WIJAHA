@@ -471,6 +471,7 @@ export function verifyAndHardenResultPure(
       level: r.level,
       status: r.status,
       reviewedBy: r.reviewedBy ?? undefined,
+      references: r.references && r.references.length > 0 ? r.references : undefined,
     };
   });
 

@@ -234,6 +234,16 @@ export const WijahaResultSchema = z.object({
           status: z.string(),
           sourceTitle: z.string().optional(),
           reviewedBy: z.string().optional(),
+          references: z
+            .array(
+              z.object({
+                title: z.string(),
+                publisher: z.string().optional(),
+                url: z.string().optional(),
+                reliability: z.string().optional(),
+              }),
+            )
+            .optional(),
         }),
       )
       .optional(),

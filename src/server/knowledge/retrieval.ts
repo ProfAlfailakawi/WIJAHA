@@ -1,7 +1,7 @@
 import { and, cosineDistance, inArray, isNotNull, sql } from 'drizzle-orm';
 import { embedTexts } from '../ai/provider.ts';
 import { db } from '../../db/index.ts';
-import { knowledgeRules, synonyms } from '../../db/schema.ts';
+import { knowledgeRules, sources as sourcesTable, synonyms } from '../../db/schema.ts';
 import {
   computeDeterministicEmbedding,
   cosineSimilarity,
@@ -26,6 +26,7 @@ export interface RetrievedRule {
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   sources: Array<{ sourceId: string; locator?: string }>;
+  references?: Array<{ title: string; publisher?: string; url?: string; reliability?: string }>;
   score: number;
 }
 
@@ -208,7 +209,7 @@ export async function retrieveHybridRules(params: {
       console.warn('semantic retrieval unavailable, using lexical only:', (err as Error).message);
       return [] as string[];
     });
-    if (semanticIds.length === 0) return lexical;
+    if (semanticIds.length === 0) return attachReferences(lexical);
 
     const topK = params.topK ?? 10;
     const fullLexical = scoreRulesPure(eligibleRules, {
@@ -216,7 +217,7 @@ export async function retrieveHybridRules(params: {
       topK: eligibleRules.length,
       extraSynonyms: mappedSynonyms,
     });
-    return fuseRankingsPure(fullLexical, semanticIds, topK);
+    return attachReferences(fuseRankingsPure(fullLexical, semanticIds, topK));
   } catch (error) {
     console.error('retrieveHybridRules failed:', error);
     throw new Error('Failed to retrieve protocol knowledge rules.', { cause: error });
@@ -253,6 +254,25 @@ export async function detectSimilarRules(input: {
   } catch (error) {
     console.error('detectSimilarRules failed:', error);
     return [];
+  }
+}
+
+/** Adds the cited source records (title, publisher, link) to each retrieved rule. Failure never blocks retrieval. */
+async function attachReferences(rules: RetrievedRule[]): Promise<RetrievedRule[]> {
+  try {
+    const ids = [...new Set(rules.flatMap((r) => r.sources.map((s) => s.sourceId)))];
+    if (ids.length === 0) return rules;
+    const rows = await db.select().from(sourcesTable).where(inArray(sourcesTable.id, ids));
+    const byId = new Map(rows.map((x) => [x.id, x]));
+    return rules.map((r) => ({
+      ...r,
+      references: r.sources
+        .map((s) => byId.get(s.sourceId))
+        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+        .map((x) => ({ title: x.title, publisher: x.publisher, url: x.url ?? undefined, reliability: x.reliability })),
+    }));
+  } catch {
+    return rules;
   }
 }
 

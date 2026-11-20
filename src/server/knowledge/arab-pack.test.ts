@@ -55,3 +55,15 @@ test('retrieval: queries without a country do not surface country packs first', 
   const ids = top('أريد طلب مراجعة خبير لبرنامج زيارة رسمي', 5);
   assert.ok(!ids.slice(0, 3).some((id) => /^R-ARAB-1[0-9][0-9]$/.test(id)));
 });
+
+test('verified references: official/secondary sources with URLs are attached to the corrected rules', async () => {
+  const { SEED_SOURCES } = await import('../../db/seed-data.ts');
+  const verified = SEED_SOURCES.filter((s) => s.id.startsWith('S-VER-'));
+  assert.ok(verified.length >= 10);
+  for (const s of verified) assert.ok('url' in s && /^https:\/\//.test(String(s.url)), s.id);
+  const uae = SEED_KNOWLEDGE_RULES.find((r) => r.id === 'R-ARAB-112')!;
+  assert.ok(uae.sources.some((x) => x.sourceId === 'S-VER-001'));
+  assert.ok(uae.bodyAr.includes('الشارقة') && uae.bodyEn.includes('Sharjah'));
+  const kw = SEED_KNOWLEDGE_RULES.find((r) => r.id === 'R-ARAB-103')!;
+  assert.ok(kw.bodyEn.includes('Law No. 44 of 1968'));
+});

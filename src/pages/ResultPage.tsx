@@ -826,6 +826,27 @@ export function ResultPage() {
               <p className="text-xs text-[var(--ink-3)]">
                 {src.sourceTitle} · <span className="font-mono">{src.status}</span>
               </p>
+              {src.references && src.references.length > 0 && (
+                <ul className="space-y-1 pt-1">
+                  {src.references.map((ref, ri) => (
+                    <li key={ri} className="text-xs text-[var(--ink-2)] leading-relaxed">
+                      {ref.url ? (
+                        <a
+                          href={ref.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline decoration-[var(--gold)] underline-offset-2 hover:text-[var(--ink)]"
+                        >
+                          {ref.title}
+                        </a>
+                      ) : (
+                        <span>{ref.title}</span>
+                      )}
+                      {ref.publisher ? <span className="text-[var(--ink-3)]"> — {ref.publisher}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </div>
