@@ -252,6 +252,8 @@ html[lang="en"] .wj-display { font-family: "Cormorant Garamond", Georgia, serif;
   html[lang="en"] h1, html[lang="en"] h2 { font-family: "Alexandria", system-ui, sans-serif; font-weight: 700; }
 }
 .v2-hero {
+  /* The hero is navy in both themes, so pin the foreground tokens used inside it. */
+  --primary-fg: #F7F2E8; --gold: #E8C882;
   position: relative; overflow: hidden; color: #F7F2E8;
   background: radial-gradient(900px 500px at 85% -10%, rgba(212,170,90,.28), transparent 60%),
               radial-gradient(700px 500px at 0% 110%, rgba(45,212,191,.16), transparent 60%),
