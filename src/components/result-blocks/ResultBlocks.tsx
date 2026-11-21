@@ -21,6 +21,9 @@ import {
 import { motion, useReducedMotion } from 'motion/react';
 import { downloadPng } from '../visuals/export.ts';
 import { SeatingFloorplan, SeatLegend } from '../visuals/SeatingFloorplan';
+import { Hall3D } from '../three/Hall3D';
+import type { HallSeat } from '../three/hall-scene.ts';
+import { fromPercent, planLayout } from '../../shared/visuals/seating.ts';
 import { VisualTimeline } from '../visuals/VisualTimeline';
 import { useI18n } from '../../lib/i18n';
 import type {
@@ -679,6 +682,16 @@ function SeatingBlockView({
   const [activeTab, setActiveTab] = useState<'diagram' | 'list'>('diagram');
   const [selectedSeatId, setSelectedSeatId] = useState<string>(block.seats[1]?.id || block.seats[0]?.id || '');
   const [playKey, setPlayKey] = useState(0);
+  const [view3d, setView3d] = useState(false);
+  const [no3d, setNo3d] = useState(false);
+  const hallSeats: HallSeat[] = useMemo(() => {
+    const plan = planLayout(block.layout, block.seats.length);
+    return block.seats.map((s, i) => {
+      const spot = plan.seats.find((p) => p.rank === s.rank) ?? plan.seats[i];
+      const px = fromPercent(s.x, s.y);
+      return { id: s.id, label: s.label, role: s.role, rank: s.rank ?? i + 1, x: px.x, y: px.y, facing: spot?.facing ?? 90 };
+    });
+  }, [block.layout, block.seats]);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const sortedSeats = useMemo(
@@ -760,6 +773,23 @@ function SeatingBlockView({
 
       {activeTab === 'diagram' ? (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label={locale === 'ar' ? 'نمط العرض' : 'View mode'}>
+            <button type="button" aria-pressed={!view3d} onClick={() => setView3d(false)} className="min-h-[36px] px-3 rounded-full border border-[var(--line)] text-xs font-semibold cursor-pointer aria-pressed:bg-[var(--primary)] aria-pressed:text-[var(--bg)] text-[var(--ink)]" data-testid="result-view-2d">{locale === 'ar' ? 'مخطط ثنائي' : '2D plan'}</button>
+            <button type="button" aria-pressed={view3d} onClick={() => setView3d(true)} className="min-h-[36px] px-3 rounded-full border border-[var(--line)] text-xs font-semibold cursor-pointer aria-pressed:bg-[var(--primary)] aria-pressed:text-[var(--bg)] text-[var(--ink)]" data-testid="result-view-3d">{locale === 'ar' ? 'قاعة ثلاثية الأبعاد' : '3D hall'}</button>
+          </div>
+          {view3d && !no3d ? (
+            <Hall3D
+              plan={planLayout(block.layout, block.seats.length)}
+              seats={hallSeats}
+              selectedId={selectedSeat?.id}
+              rtl={locale === 'ar'}
+              preset="overview"
+              presetNonce={0}
+              onPick={setSelectedSeatId}
+              onUnsupported={() => setNo3d(true)}
+              ariaLabel={locale === 'ar' ? 'قاعة ثلاثية الأبعاد تدور بإصبعك' : 'Rotatable 3D hall'}
+            />
+          ) : (
           <div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] p-2 sm:p-3 overflow-hidden">
             <SeatingFloorplan
               ref={svgRef}
@@ -772,6 +802,7 @@ function SeatingBlockView({
               ariaLabel={t.result.blocks.seatingTitle}
             />
           </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
