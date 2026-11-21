@@ -19,7 +19,7 @@ async function ask(ctx, q) {
 }
 
 (async () => {
-  const b = await chromium.launch();
+  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, locale: 'ar', acceptDownloads: true });
 
   // 1) Saudi delegation: reception path + share card
@@ -70,6 +70,23 @@ async function ask(ctx, q) {
     await sec.scrollIntoViewIfNeeded();
     await p.waitForTimeout(1200);
     await sec.screenshot({ path: require('path').join(process.env.SHOTS || require('os').tmpdir(), 'wijaha-result-seating.png') });
+    // 3D hall inside the result
+    await p.click('[data-testid="result-view-3d"]');
+    await p.waitForSelector('[data-testid="hall3d"][data-ready="true"]', { timeout: 90000 });
+    await p.waitForTimeout(900);
+    const hallColours = await p.evaluate(async () => {
+      const c = document.querySelector('[data-testid="hall3d-canvas"]');
+      if (!c) return -1;
+      await new Promise((r) => requestAnimationFrame(() => r()));
+      const t = document.createElement('canvas'); t.width = 64; t.height = 40;
+      const g = t.getContext('2d'); g.drawImage(c, 0, 0, 64, 40);
+      const d = g.getImageData(0, 0, 64, 40).data; const s = new Set();
+      for (let i = 0; i < d.length; i += 4) s.add(((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4));
+      return s.size;
+    });
+    log('the result offers a 3D hall that renders', hallColours > 12, `${hallColours} distinct colours`);
+    await p.click('[data-testid="result-view-2d"]');
+    log('and the 2D plan returns', (await p.locator('ol[aria-label="ترتيب الأسبقية"] li').count()) >= 4);
     log('no page errors (seating)', errs.filter((e) => !/Failed to load resource/.test(e)).length === 0, errs.slice(0, 2).join(' | '));
     await p.close();
   }

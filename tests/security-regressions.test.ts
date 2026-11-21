@@ -142,7 +142,7 @@ test('A1: demo-login returns 404 when ENABLE_DEMO_LOGIN is not true, works in de
     const res = await fetch(`${srvEnabled.baseUrl}/api/auth/demo-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'sara@org-alpha.demo' }),
+      body: JSON.stringify({ email: 'owner@org-alpha.demo' }),
     });
     assert.equal(res.status, 200, 'demo-login must work in dev when ENABLE_DEMO_LOGIN=true');
   } finally {

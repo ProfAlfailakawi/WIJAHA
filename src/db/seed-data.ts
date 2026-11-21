@@ -981,8 +981,8 @@ const SCENARIO_1_NODES: ScenarioNode[] = [
     narrativeAr: 'الساعة الآن 09:35 صباحاً. وفد شريك دولي مكون من 5 أشخاص وصل إلى بهو مقر شركتكم قبل الموعد الرسمي (10:00) بخمسٍ وعشرين دقيقة. الرئيس التنفيذي (المضيف الرئيسي) لا يزال في اجتماع مجلس إدارة مغلق ينتهي 09:55، وقاعة الاجتماعات الرئيسية قيد التجهيز النهائي.',
     narrativeEn: 'It is 09:35 AM. A five-member international partner delegation has just arrived in your lobby 25 minutes ahead of their 10:00 AM appointment. Your CEO (principal host) is in a closed board call until 09:55 AM, and the main boardroom is undergoing final setup.',
     persona: {
-      nameAr: 'السيد ماريك كوفالسكي',
-      nameEn: 'Mr. Marek Kowalski',
+      nameAr: 'رئيس الوفد الزائر',
+      nameEn: 'The head of the visiting delegation',
       roleAr: 'رئيس الوفد الزائر',
       roleEn: 'Head of Visiting Delegation',
       styleAr: 'مهذب ودقيق في المواعيد، يعتذر بابتسامة عن وصولهم المبكر بسبب خلو الطريق.',

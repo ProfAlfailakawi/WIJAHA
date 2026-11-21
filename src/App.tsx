@@ -1,5 +1,7 @@
 import { EventPage } from './pages/tools/EventPage';
 import { ReviewPage } from './pages/tools/ReviewPage';
+import { ShowcasePage } from './pages/tools/ShowcasePage';
+import { PosturePage } from './pages/tools/PosturePage';
 import { ToolsHubPage } from './pages/tools/ToolsHubPage';
 import { LivePage } from './pages/tools/LivePage';
 import { VoicePage } from './pages/tools/VoicePage';
@@ -85,6 +87,8 @@ export default function App() {
             <Route path="/seating" element={<SeatingStudioPage />} />
             <Route path="/occasions" element={<OccasionsPage />} />
             <Route path="/tools" element={<ToolsHubPage />} />
+            <Route path="/showcase" element={<ShowcasePage />} />
+            <Route path="/posture" element={<PosturePage />} />
             <Route path="/event" element={<EventPage />} />
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/live" element={<LivePage />} />

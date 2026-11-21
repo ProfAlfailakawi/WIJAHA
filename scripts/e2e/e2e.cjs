@@ -43,7 +43,7 @@ async function pageChecks(ctx, path, label, opts = {}) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'ar' });
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ar' });
 
@@ -95,7 +95,7 @@ async function pageChecks(ctx, path, label, opts = {}) {
   await page.waitForTimeout(800);
   const hasAdminBtn = await page.getByText('admin@wijaha.demo').count();
   log('admin demo account hidden in dialog', hasAdminBtn === 0);
-  const noura = page.getByText('noura@individual.demo');
+  const noura = page.getByText('member@individual.demo');
   log('demo login buttons visible', (await noura.count()) > 0);
   if (await noura.count()) {
     await noura.first().click();
@@ -129,6 +129,10 @@ async function pageChecks(ctx, path, label, opts = {}) {
   const finished = /\/practice\/report\//.test(page.url());
   const reportText = finished ? await page.innerText('body') : '';
   log('practice scenario playable to a report', finished && /%|الكفاءات|C\d/.test(reportText), `steps=${steps} url=${page.url().replace(BASE, '')}`);
+  if (finished) {
+    await page.waitForSelector('[data-testid="sim-3d"] [data-testid="posture"][data-ready="true"]', { timeout: 90000 }).catch(() => null);
+    log('the simulation report shows the 3D posture figure', (await page.locator('[data-testid="sim-3d"] [data-testid="posture-canvas"]').count()) === 1);
+  }
   if (OUT) await page.screenshot({ path: `${OUT}/practice-end.png` });
   if (finished) await pageChecks(desktop, page.url().replace(BASE, ''), 'desktop practice report a11y', {});
 

@@ -34,8 +34,8 @@ const MAJLIS_NODES: ScenarioNode[] = [
     narrativeAr: 'وصلت إلى مجلس شريكك الخليجي في زيارة عمل. يقف المضيف لاستقبالك وفي المجلس نحو ثمانية أشخاص بينهم رجال أكبر سناً، ويقترب مقدِّم القهوة بالدلة والفناجين.',
     narrativeEn: 'You have arrived at your Gulf partner\'s majlis for a business visit. The host stands to welcome you, about eight people sit in the room including several elders, and the coffee server approaches with the dallah and cups.',
     persona: {
-      nameAr: 'الشيخ سالم',
-      nameEn: 'Sheikh Salem',
+      nameAr: 'الشيخ المضيف',
+      nameEn: 'The sheikh (host)',
       roleAr: 'المضيف',
       roleEn: 'The host',
       styleAr: 'كريم ودافئ، يرحب بك ويشير إلى مكان الجلوس.',

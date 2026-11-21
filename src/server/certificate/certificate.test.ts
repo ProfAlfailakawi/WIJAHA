@@ -22,9 +22,9 @@ test('every option index is in range', () => {
 });
 
 test('certificates verify, and tampering or a wrong secret fails', () => {
-  const code = signCertificate(SECRET, 'أحمد الفيلكاوي', 14, 15, new Date('2026-11-20T10:00:00Z'));
+  const code = signCertificate(SECRET, 'مختبر آلي', 14, 15, new Date('2026-11-20T10:00:00Z'));
   const v = verifyCertificate(SECRET, code);
-  assert.equal(v?.name, 'أحمد الفيلكاوي');
+  assert.equal(v?.name, 'مختبر آلي');
   assert.equal(v?.issuedOn, '2026-11-20');
   assert.equal(verifyCertificate('y'.repeat(40), code), null);
   const [p, s] = code.split('.');

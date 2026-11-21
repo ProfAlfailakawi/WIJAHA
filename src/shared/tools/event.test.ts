@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildInvitation, clashesFor, dayOf, EMPTY_EVENT, eventIcs, parseStart, readiness } from './event.ts';
 
-const ev = { ...EMPTY_EVENT, name: 'حفل افتتاح المعرض', start: '2027-03-10T19:30', venue: 'فندق الجزيرة', hostName: 'خالد المنصور', hostTitle: 'سعادة', dress: 'الزي الرسمي', rsvp: 'rsvp@example.org' };
+const ev = { ...EMPTY_EVENT, name: 'حفل افتتاح المعرض', start: '2027-03-10T19:30', venue: 'فندق الجزيرة', hostName: 'المضيف الاختباري', hostTitle: 'سعادة', dress: 'الزي الرسمي', rsvp: 'rsvp@example.org' };
 
 test('start parsing is strict', () => {
   assert.deepEqual(parseStart('2027-03-10T19:30'), { y: 2027, m: 3, d: 10, hh: 19, mm: 30 });
@@ -13,7 +13,7 @@ test('start parsing is strict', () => {
 
 test('Arabic and English invitations contain every field', () => {
   const ar = buildInvitation(ev, 'ar');
-  for (const s of ['سعادة خالد المنصور', 'حفل افتتاح المعرض', '19:30', 'فندق الجزيرة', 'الزي الرسمي', 'rsvp@example.org', 'الموافق']) assert.ok(ar.includes(s), s);
+  for (const s of ['سعادة المضيف الاختباري', 'حفل افتتاح المعرض', '19:30', 'فندق الجزيرة', 'الزي الرسمي', 'rsvp@example.org', 'الموافق']) assert.ok(ar.includes(s), s);
   const en = buildInvitation(ev, 'en');
   assert.ok(/RSVP: rsvp@example.org/.test(en) && /at 19:30/.test(en));
 });

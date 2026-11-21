@@ -12,6 +12,8 @@ import {
 import { BRAND } from '../config/brand';
 import { AppShell } from '../components/layout/AppShell';
 import { ExpertBridgeCard } from '../components/result-blocks/ResultBlocks';
+import { PostureViewer } from '../components/three/PostureViewer';
+import { POSE_INFO } from '../shared/tools/poses.ts';
 import {
   Button,
   DemoContentNotice,
@@ -397,6 +399,8 @@ export function SimulationReportPage() {
   const [report, setReport] = useState<SimulationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dismissedBridge, setDismissedBridge] = useState(false);
+  const [pose, setPose] = useState('seated');
+  const [no3d, setNo3d] = useState(false);
 
   useEffect(() => {
     if (!runId) return;
@@ -432,6 +436,25 @@ export function SimulationReportPage() {
               <Compass className="w-4 h-4 text-[var(--gold-ink)] shrink-0" aria-hidden="true" />
               <span>{t.practice.disclaimer}</span>
             </div>
+
+            {/* 3D reminder of the right posture, alongside the report */}
+            {!no3d && (
+              <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-3" aria-labelledby="sim-3d-h" data-testid="sim-3d">
+                <h2 id="sim-3d-h" className="text-base font-semibold text-[var(--ink)]">
+                  {locale === 'ar' ? 'شاهد الوضعية الصحيحة بثلاثة أبعاد' : 'See the right posture in 3D'}
+                </h2>
+                <PostureViewer pose={pose} ariaLabel={locale === 'ar' ? 'مجسم ثلاثي الأبعاد لوضعية الجسد' : '3D figure showing the body posture'} onUnsupported={() => setNo3d(true)} />
+                <div className="flex flex-wrap gap-2" role="group" aria-label={locale === 'ar' ? 'الوضعيات' : 'Poses'}>
+                  {POSE_INFO.map((p) => (
+                    <button key={p.id} type="button" aria-pressed={pose === p.id} onClick={() => setPose(p.id)} className={`min-h-[40px] rounded-full border px-3.5 text-xs font-semibold cursor-pointer ${pose === p.id ? 'bg-[var(--primary)] text-[var(--bg)] border-[var(--primary)]' : 'bg-[var(--bg)] text-[var(--ink-2)] border-[var(--line)]'}`}>
+                      {locale === 'ar' ? p.ar : p.en}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-sm text-[var(--ink)] leading-relaxed">{locale === 'ar' ? POSE_INFO.find((p) => p.id === pose)?.tipAr : POSE_INFO.find((p) => p.id === pose)?.tipEn}</p>
+                <Link to="/posture" className="text-sm font-semibold underline text-[var(--ink)]">{locale === 'ar' ? 'كل الوضعيات والمعرض ثلاثي الأبعاد' : 'All poses and the 3D showcase'}</Link>
+              </section>
+            )}
 
             {/* Competency Infographic Breakdown (No single aggregate score headline!) */}
             <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">

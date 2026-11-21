@@ -14,9 +14,10 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ttest-'));
 const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
 
 (async () => {
-  const b = await chromium.launch();
+  const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const ctx = await b.newContext({ viewport: { width: 1280, height: 1000 }, locale: 'ar', acceptDownloads: true });
   const p = await ctx.newPage();
+  p.setDefaultTimeout(Number(process.env.PW_TIMEOUT || 30000));
   const errs = [];
   p.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
   p.on('console', (m) => m.type() === 'error' && !/api\/|favicon|Failed to load resource/.test(m.text()) && errs.push(m.text().slice(0, 160)));
@@ -121,7 +122,7 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   await axe('learn');
   await overflow('learn');
   if (!NOAPI) {
-    await p.fill('[data-testid="exam-name"]', 'أحمد الاختبار');
+    await p.fill('[data-testid="exam-name"]', 'مختبر آلي');
     // wrong first: pick option 3 for everything
     for (let i = 1; i <= 15; i++) await p.check(`[data-testid="ans-q${i}-3"]`);
     await p.click('[data-testid="exam-submit"]');
@@ -130,12 +131,12 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
     log('a failing exam gets no certificate and shows modules to review', !(await p.locator('[data-testid="cert-download"]').count()) && /راجع/.test(failTxt));
     log('wrong answers are not revealed', !/الإجابة الصحيحة/.test(failTxt));
     await p.click('[data-testid="exam-result"] button');
-    await p.fill('[data-testid="exam-name"]', 'أحمد الاختبار');
+    await p.fill('[data-testid="exam-name"]', 'مختبر آلي');
     const key = { q1: 1, q2: 0, q3: 1, q4: 1, q5: 0, q6: 1, q7: 1, q8: 1, q9: 0, q10: 1, q11: 1, q12: 1, q13: 1, q14: 1, q15: 1 };
     for (const [q, i] of Object.entries(key)) await p.check(`[data-testid="ans-${q}-${i}"]`);
     await p.click('[data-testid="exam-submit"]');
     await p.waitForSelector('[data-testid="cert-download"]');
-    log('a passing exam yields a certificate', /أحمد الاختبار/.test(await p.locator('svg[aria-label*="شهادة"]').getAttribute('aria-label')));
+    log('a passing exam yields a certificate', /مختبر آلي/.test(await p.locator('svg[aria-label*="شهادة"]').getAttribute('aria-label')));
     const [d2] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="cert-download"]')]);
     const cf = path.join(tmp, 'cert.png');
     await d2.saveAs(cf);
@@ -143,7 +144,7 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
     const href = await p.locator('[data-testid="cert-verify-link"]').getAttribute('href');
     await p.goto(BASE + href, { waitUntil: 'networkidle' });
     await p.waitForSelector('[data-testid="verify-valid"]');
-    log('the verification page confirms it', /أحمد الاختبار/.test(await p.locator('[data-testid="verify-valid"]').textContent()));
+    log('the verification page confirms it', /مختبر آلي/.test(await p.locator('[data-testid="verify-valid"]').textContent()));
     await axe('verify');
     await p.goto(BASE + href.slice(0, -3) + 'AAA', { waitUntil: 'networkidle' });
     await p.waitForSelector('[data-testid="verify-invalid"]');
@@ -161,12 +162,12 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   await p.fill('[data-testid="ev-name"]', 'حفل استقبال وفد');
   await p.fill('[data-testid="ev-venue"]', 'فندق الجزيرة');
   await p.fill('[data-testid="ev-hostTitle"]', 'سعادة');
-  await p.fill('[data-testid="ev-hostName"]', 'خالد المنصور');
+  await p.fill('[data-testid="ev-hostName"]', 'المضيف الاختباري');
   await p.fill('[data-testid="ev-dress"]', 'الزي الرسمي');
   await p.fill('[data-testid="ev-rsvp"]', 'rsvp@example.org');
   await p.fill('[data-testid="ev-start"]', '2031-03-10T19:30');
   const inv = await p.locator('[data-testid="ev-invitation"]').textContent();
-  log('the invitation is built from the fields', /يتشرف سعادة خالد المنصور/.test(inv) && /19:30/.test(inv) && /الموافق/.test(inv));
+  log('the invitation is built from the fields', /يتشرف سعادة المضيف الاختباري/.test(inv) && /19:30/.test(inv) && /الموافق/.test(inv));
   log('readiness improves', /[67] من 8/.test(await readyTxt()), await readyTxt());
   await p.fill('[data-testid="ev-start"]', '2031-02-25T19:30');
   await p.waitForSelector('[data-testid="ev-clash"]', { timeout: 3000 }).catch(() => undefined);
@@ -219,6 +220,92 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
     await ctx.setOffline(false);
   }
 
+  // ------------------------------------------------------------- 3D (WebGL)
+  {
+    // Is a canvas drawn (not a flat colour)? Sample its pixels through a 2D copy.
+    const painted = (sel) => p.evaluate(async (s) => {
+      const c = document.querySelector(s);
+      if (!c) return -1;
+      const tmp = document.createElement('canvas'); tmp.width = 64; tmp.height = 40;
+      const g = tmp.getContext('2d');
+      // WebGL canvases cannot be read back reliably between frames, so draw it right after a frame.
+      await new Promise((r) => requestAnimationFrame(() => r()));
+      g.drawImage(c, 0, 0, 64, 40);
+      const d = g.getImageData(0, 0, 64, 40).data;
+      const set = new Set();
+      for (let i = 0; i < d.length; i += 4) set.add(((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4));
+      return set.size;
+    }, sel);
+    await p.goto(BASE + '/seating', { waitUntil: 'networkidle' });
+    await p.evaluate(() => localStorage.clear());
+    await p.reload({ waitUntil: 'networkidle' });
+    await p.click('[data-testid="view-3d"]');
+    await p.waitForSelector('[data-testid="hall3d"][data-ready="true"]', { timeout: 90000 });
+    await p.waitForTimeout(800);
+    const colours = await painted('[data-testid="hall3d-canvas"]');
+    log('the 3D hall renders a real scene', colours > 12, `${colours} distinct colours`);
+    for (const k of ['chief', 'host', 'door', 'overview']) {
+      await p.click(`[data-testid="cam-${k}"]`);
+      await p.waitForTimeout(1300);
+    }
+    log('all four camera views switch without errors', (await p.locator('[data-testid="hall3d-canvas"]').count()) === 1);
+    const [d4] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="hall-png"]')]);
+    const hf = path.join(tmp, 'hall.png');
+    await d4.saveAs(hf);
+    log('3D hall PNG snapshot downloads', png(fs.readFileSync(hf)) && fs.statSync(hf).size > 8000, `${fs.statSync(hf).size} bytes`);
+    await p.click('[data-testid="view-2d"]');
+    log('back to the 2D plan keeps the studio working', (await p.locator('ol[aria-label="ترتيب الجلوس"] li').count()) > 3);
+    await axe('seating 3D view');
+    await p.click('[data-testid="view-3d"]');
+    await p.waitForSelector('[data-testid="hall3d"][data-ready="true"]', { timeout: 90000 });
+    await overflow('seating 3D view');
+
+    await p.goto(BASE + '/posture', { waitUntil: 'networkidle' });
+    await p.waitForSelector('[data-testid="posture"][data-ready="true"]', { timeout: 90000 });
+    await p.waitForTimeout(700);
+    log('the posture figure renders', (await painted('[data-testid="posture-canvas"]')) > 8);
+    const before = await p.locator('[data-testid="pose-info"]').textContent();
+    await p.click('[data-testid="pose-majlisAvoid"]');
+    const after = await p.locator('[data-testid="pose-info"]').textContent();
+    log('choosing a pose updates the guidance', before !== after && /يُتجنَّب/.test(after), after.slice(0, 40));
+    await p.click('[data-testid="pose-next"]');
+    const wrapped = await p.waitForFunction(() => /وقفة|Reception/.test(document.querySelector('[data-testid="pose-info"] h2')?.textContent || ''), null, { timeout: 8000 }).then(() => true).catch(() => false);
+    log('next pose wraps around the list', wrapped, await p.locator('[data-testid="pose-info"] h2').textContent());
+    const [d5] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="pose-png"]')]);
+    const pf = path.join(tmp, 'pose.png');
+    await d5.saveAs(pf);
+    log('posture PNG snapshot downloads', png(fs.readFileSync(pf)), `${fs.statSync(pf).size} bytes`);
+    await axe('posture');
+    await overflow('posture');
+  }
+
+  // ------------------------------------------------------------- 3D showcase
+  {
+    await p.goto(BASE + '/showcase', { waitUntil: 'networkidle' });
+    for (const k of ['table', 'podium']) {
+      await p.click(`[data-testid="scene-${k}"]`);
+      await p.waitForSelector('[data-testid="showcase"][data-ready="true"]', { timeout: 90000 });
+      await p.waitForTimeout(700);
+      const n = await p.evaluate(async () => {
+        const c = document.querySelector('[data-testid="showcase-canvas"]');
+        if (!c) return -1;
+        await new Promise((r) => requestAnimationFrame(() => r()));
+        const t = document.createElement('canvas'); t.width = 64; t.height = 40;
+        const g = t.getContext('2d'); g.drawImage(c, 0, 0, 64, 40);
+        const d = g.getImageData(0, 0, 64, 40).data; const s = new Set();
+        for (let i = 0; i < d.length; i += 4) s.add(((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4));
+        return s.size;
+      });
+      log(`showcase "${k}" renders a real scene`, n > 10, `${n} distinct colours`);
+    }
+    const [d6] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="showcase-png"]')]);
+    const sf = path.join(tmp, 'show.png');
+    await d6.saveAs(sf);
+    log('showcase PNG downloads', png(fs.readFileSync(sf)), `${fs.statSync(sf).size} bytes`);
+    await axe('showcase');
+    await overflow('showcase');
+  }
+
   // ------------------------------------------------------------- English + mobile
   for (const [route, re] of [['/live', /Protocol LIVE|event-day/i], ['/learn', /Learn|certificate/i], ['/voice', /Practise|Voice/i], ['/photo-check', /hall|invitation/i], ['/org-protocol', /manual/i]]) {
     await p.goto(BASE + route, { waitUntil: 'networkidle' });
@@ -229,7 +316,7 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   await ctx.close();
   const m = await b.newContext({ viewport: { width: 375, height: 800 }, locale: 'ar' });
   const mp = await m.newPage();
-  for (const r of ['/tools', '/live', '/voice', '/photo-check', '/org-protocol', '/learn']) {
+  for (const r of ['/tools', '/showcase', '/posture', '/live', '/voice', '/photo-check', '/org-protocol', '/learn']) {
     await mp.goto(BASE + r, { waitUntil: 'networkidle' });
     log(`[mobile] ${r} has no horizontal overflow`, await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   }
