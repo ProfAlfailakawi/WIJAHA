@@ -56,7 +56,7 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
 
   // CSV upload with quotes
   const csvPath = path.join(os.tmpdir(), 'guests.csv');
-  fs.writeFileSync(csvPath, 'Name,Title\n"Doe, A",Minister\nGuest B,Director\nGuest C,Ambassador\n');
+  fs.writeFileSync(csvPath, 'Name,Title\n"Doe, A",Minister\nB,Director\nC,Ambassador\n');
   await p.locator('[data-testid="guest-file"]').setInputFiles(csvPath);
   await p.waitForTimeout(500);
   o = await order(p);
@@ -67,6 +67,8 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   const box = async (i) => { const bb = await seats.nth(i).boundingBox(); return { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 }; };
   // find seats by their aria-label (rank + name)
   const idxOf = async (re) => { const labels = await seats.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label'))); return labels.findIndex((l) => re.test(l)); };
+  await p.locator('svg[aria-label="مخطط الجلوس القابل للسحب"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await p.waitForTimeout(300);
   const iA = await idxOf(/^3 /), iB = await idxOf(/^4 /);
   const a = await box(iA), c = await box(iB);
   const before = await order(p);
