@@ -1,3 +1,4 @@
+import { useAuth } from '../../lib/auth-client';
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, WifiOff, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -103,6 +104,9 @@ export function RuleLevelTag({
 }
 
 export function DemoContentNotice({ text, compact = false }: { text: string; compact?: boolean }) {
+  const { state } = useAuth();
+  // Hidden once the content is approved: the server reports whether any unreviewed demo rules remain.
+  if (state.demoContentActive === false) return null;
   return (
     <div
       className={`inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--ink-2)] ${

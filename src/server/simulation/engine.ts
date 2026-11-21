@@ -82,6 +82,14 @@ const COMPETENCY_NAMES: Record<CompetencyCode, { ar: string; en: string }> = {
   C7: { ar: 'التخطيط والتنسيق', en: 'Planning & coordination' },
 };
 
+const SCENARIO_ORDER = ['SCN-DEMO-01', 'SCN-DEMO-02', 'SCN-ARAB-01', 'SCN-ARAB-02', 'SCN-ARAB-03', 'SCN-ARAB-04'];
+
+/** Recommends the next scenario in the catalogue order, wrapping around. */
+export function nextScenarioId(current: string): string {
+  const idx = SCENARIO_ORDER.indexOf(current);
+  return SCENARIO_ORDER[(idx + 1) % SCENARIO_ORDER.length];
+}
+
 export function buildSimulationReportPure(params: {
   runId: string;
   scenarioId: string;
@@ -203,8 +211,7 @@ export function buildSimulationReportPure(params: {
       feedbackEn: s.feedbackEn,
       ruleIds: s.ruleIds,
     })),
-    recommendedNextScenarioId:
-      params.scenarioId === 'SCN-DEMO-01' ? 'SCN-DEMO-02' : 'SCN-DEMO-01',
+    recommendedNextScenarioId: nextScenarioId(params.scenarioId),
     expertBridgeSuggestion,
     historyPoints: params.previousRunsAvgPcts,
   };

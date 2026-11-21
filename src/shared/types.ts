@@ -154,7 +154,7 @@ export type SeatNode = z.infer<typeof SeatSchema>;
 
 export const SeatingBlockSchema = z.object({
   type: z.literal('seating'),
-  layout: z.enum(['round', 'rect', 'u_shape', 'theatre']),
+  layout: z.enum(['round', 'rect', 'u_shape', 'theatre', 'majlis']),
   seats: z.array(SeatSchema),
   host: z.string().optional(),
   officialPrecedenceNotice: z.boolean().default(true),
@@ -234,6 +234,16 @@ export const WijahaResultSchema = z.object({
           status: z.string(),
           sourceTitle: z.string().optional(),
           reviewedBy: z.string().optional(),
+          references: z
+            .array(
+              z.object({
+                title: z.string(),
+                publisher: z.string().optional(),
+                url: z.string().optional(),
+                reliability: z.string().optional(),
+              }),
+            )
+            .optional(),
         }),
       )
       .optional(),

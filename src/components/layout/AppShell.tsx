@@ -190,7 +190,13 @@ export function SignInModal() {
           <div className="border-t border-[var(--line)] pt-4">
             <p className="text-xs font-medium text-[var(--ink-3)] mb-2.5">{t.auth.demoTitle}</p>
             <div className="grid grid-cols-1 gap-2">
-              {demoAccounts.map((acc) => (
+              {demoAccounts
+                .filter(
+                  (acc) =>
+                    state.demoPrivilegedEnabled !== false ||
+                    !['admin@wijaha.demo', 'yousef@wijaha.demo'].includes(acc.email),
+                )
+                .map((acc) => (
                 <button
                   key={acc.email}
                   type="button"
@@ -439,6 +445,10 @@ export function AppShell({
                   ]
                 : []),
               { to: '/practice', label: t.nav.practice },
+              { to: '/visuals', label: t.nav.visuals },
+              { to: '/seating', label: t.nav.seating },
+              { to: '/occasions', label: t.nav.occasions },
+              { to: '/tools', label: t.nav.tools },
               { to: '/check', label: t.nav.checkPlan },
               { to: '/experts', label: t.nav.experts },
               { to: '/pricing', label: t.nav.pricing },
@@ -504,6 +514,18 @@ export function AppShell({
             </Link>
             <Link to="/practice" className="hover:text-[var(--ink)] transition-colors">
               {t.footer.practice}
+            </Link>
+            <Link to="/visuals" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.visuals}
+            </Link>
+            <Link to="/seating" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.seating}
+            </Link>
+            <Link to="/occasions" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.occasions}
+            </Link>
+            <Link to="/tools" className="hover:text-[var(--ink)] transition-colors">
+              {t.nav.tools}
             </Link>
             <Link to="/experts" className="hover:text-[var(--ink)] transition-colors">
               {t.footer.experts}

@@ -241,7 +241,7 @@ html[lang="en"] .wj-display { font-family: "Cormorant Garamond", Georgia, serif;
 :root {
   --navy-1: #0A1330; --navy-2: #15275A; --navy-3: #1E3A8A;
   --t-gold: #FBF0D9; --t-teal: #DDF3EE; --t-rose: #FBE4E1; --t-indigo: #E4E8FB; --t-violet: #EEE5FA;
-  --c-gold: #9A6B14; --c-teal: #0F766E; --c-rose: #B4443A; --c-indigo: #3B4FC4; --c-violet: #6D3FC0;
+  --c-gold: #8A5F10; --c-teal: #0F766E; --c-rose: #B4443A; --c-indigo: #3B4FC4; --c-violet: #6D3FC0;
 }
 .dark {
   --t-gold: #3A2F14; --t-teal: #0F332F; --t-rose: #3D1D1A; --t-indigo: #1C2452; --t-violet: #2B1D4D;

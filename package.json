@@ -11,13 +11,14 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts src/server/simulation/engine.test.ts src/server/ai/understanding.test.ts",
+    "test": "tsx --test src/shared/arabic.test.ts src/server/ai/pipeline.test.ts src/server/simulation/engine.test.ts src/server/ai/understanding.test.ts src/server/ai/intent-lexicon.test.ts src/server/ai/countries.test.ts src/server/knowledge/arab-pack.test.ts src/server/simulation/arab-scenarios.test.ts src/db/pool-settings.test.ts src/shared/v2-contrast.test.ts src/shared/visuals/seating.test.ts src/shared/visuals/timeline.test.ts src/shared/visuals/card-points.test.ts src/shared/visuals/precedence.test.ts src/shared/visuals/guest-import.test.ts src/shared/occasions.test.ts src/shared/tools/live.test.ts src/shared/tools/event.test.ts src/shared/tools/voice-sim.test.ts src/shared/tools/org-manual.test.ts src/server/certificate/certificate.test.ts",
     "evals": "tsx evals/run-evals.ts",
     "test:integration": "tsx --test src/server/security-and-billing.test.ts tests/security-regressions.test.ts tests/build-assets.test.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "drizzle-kit migrate --config src/db/drizzle.config.ts",
     "db:seed": "tsx src/db/seed-cli.ts",
-    "kb:reindex": "tsx src/db/reindex-cli.ts"
+    "kb:reindex": "tsx src/db/reindex-cli.ts",
+    "e2e:visuals": "node scripts/e2e/vtest.cjs"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.14.0",
@@ -33,6 +34,7 @@
     "drizzle-kit": "^0.31.11",
     "drizzle-orm": "^0.45.4",
     "express": "^4.21.2",
+    "fflate": "^0.8.2",
     "firebase": "^13.4.0",
     "firebase-admin": "^14.5.1",
     "lucide-react": "^0.546.0",
@@ -46,6 +48,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -53,8 +56,7 @@
     "esbuild": "^0.27.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "@grpc/grpc-js": "^1.14.7"

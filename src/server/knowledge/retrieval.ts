@@ -1,7 +1,7 @@
 import { and, cosineDistance, inArray, isNotNull, sql } from 'drizzle-orm';
 import { embedTexts } from '../ai/provider.ts';
 import { db } from '../../db/index.ts';
-import { knowledgeRules, synonyms } from '../../db/schema.ts';
+import { knowledgeRules, sources as sourcesTable, synonyms } from '../../db/schema.ts';
 import {
   computeDeterministicEmbedding,
   cosineSimilarity,
@@ -26,6 +26,7 @@ export interface RetrievedRule {
   reviewedBy?: string | null;
   reviewedAt?: string | null;
   sources: Array<{ sourceId: string; locator?: string }>;
+  references?: Array<{ title: string; publisher?: string; url?: string; reliability?: string }>;
   score: number;
 }
 
@@ -34,7 +35,7 @@ const INTENT_TOPIC_MAP: Record<IntentType, string[]> = {
   dining_etiquette: ['dining', 'etiquette', 'religion_food'],
   dress_code: ['dress', 'etiquette'],
   hosting_hospitality: ['hospitality', 'dining', 'seating', 'religion_food', 'greeting'],
-  delegation_visit_host: ['visit_program', 'greeting', 'seating', 'titles', 'correspondence'],
+  delegation_visit_host: ['visit_program', 'greeting', 'seating', 'titles', 'correspondence', 'hospitality'],
   business_trip_abroad: ['visit_program', 'time', 'communication', 'gifts', 'greeting'],
   formal_invitation: ['correspondence', 'titles', 'dress'],
   seating_precedence: ['seating', 'titles'],
@@ -115,6 +116,8 @@ export function scoreRulesPure(
     if (params.countryIso) {
       if (rule.countries.includes(params.countryIso)) {
         score += 5.0;
+        // Rules written for a handful of countries are more specific than region-wide ones.
+        if (rule.countries.length <= 6 && !rule.countries.includes('GLOBAL')) score += 3.5;
       } else if (rule.countries.includes('GLOBAL')) {
         score += 1.5;
       } else {
@@ -122,6 +125,9 @@ export function scoreRulesPure(
       }
     } else if (rule.countries.includes('GLOBAL')) {
       score += 1.0;
+    } else {
+      // No country in the query: country-specific packs (e.g. Gulf/Arab drafts) must not crowd out general rules.
+      score -= 4.0;
     }
 
     for (const t of expectedTopics) {
@@ -203,7 +209,7 @@ export async function retrieveHybridRules(params: {
       console.warn('semantic retrieval unavailable, using lexical only:', (err as Error).message);
       return [] as string[];
     });
-    if (semanticIds.length === 0) return lexical;
+    if (semanticIds.length === 0) return attachReferences(lexical);
 
     const topK = params.topK ?? 10;
     const fullLexical = scoreRulesPure(eligibleRules, {
@@ -211,7 +217,7 @@ export async function retrieveHybridRules(params: {
       topK: eligibleRules.length,
       extraSynonyms: mappedSynonyms,
     });
-    return fuseRankingsPure(fullLexical, semanticIds, topK);
+    return attachReferences(fuseRankingsPure(fullLexical, semanticIds, topK));
   } catch (error) {
     console.error('retrieveHybridRules failed:', error);
     throw new Error('Failed to retrieve protocol knowledge rules.', { cause: error });
@@ -251,6 +257,25 @@ export async function detectSimilarRules(input: {
   }
 }
 
+/** Adds the cited source records (title, publisher, link) to each retrieved rule. Failure never blocks retrieval. */
+async function attachReferences(rules: RetrievedRule[]): Promise<RetrievedRule[]> {
+  try {
+    const ids = [...new Set(rules.flatMap((r) => r.sources.map((s) => s.sourceId)))];
+    if (ids.length === 0) return rules;
+    const rows = await db.select().from(sourcesTable).where(inArray(sourcesTable.id, ids));
+    const byId = new Map(rows.map((x) => [x.id, x]));
+    return rules.map((r) => ({
+      ...r,
+      references: r.sources
+        .map((s) => byId.get(s.sourceId))
+        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+        .map((x) => ({ title: x.title, publisher: x.publisher, url: x.url ?? undefined, reliability: x.reliability })),
+    }));
+  } catch {
+    return rules;
+  }
+}
+
 /** Production serves approved rules only; demo rules need an explicit opt-in (previously both branches were identical). */
 export function allowedRuleStatuses(): string[] {
   const isProd = process.env.NODE_ENV === 'production';
@@ -258,7 +283,7 @@ export function allowedRuleStatuses(): string[] {
 }
 
 async function semanticRuleIds(query: string, statuses: string[], limit = 20): Promise<string[]> {
-  const vectors = await embedTexts([query]);
+  const vectors = await embedTexts([query], 'query');
   if (!vectors) return [];
   const distance = cosineDistance(knowledgeRules.embeddingVec, vectors[0]);
   const rows = await db

@@ -259,7 +259,20 @@ export async function seedDemoData(): Promise<void> {
     .onConflictDoNothing();
 
   for (const s of SEED_SOURCES) {
-    await db.insert(sources).values(s).onConflictDoNothing();
+    await db
+      .insert(sources)
+      .values(s)
+      .onConflictDoUpdate({
+        target: sources.id,
+        set: {
+          title: s.title,
+          publisher: s.publisher,
+          isDemo: s.isDemo,
+          type: s.type,
+          reliability: s.reliability,
+          url: 'url' in s ? (s.url as string) : null,
+        },
+      });
   }
 
   await db
@@ -304,13 +317,42 @@ export async function seedDemoData(): Promise<void> {
         exceptions: r.exceptions,
         status: r.status,
         authorUid: r.authorUid,
+        reviewedBy: r.reviewedBy,
+        reviewedAt: r.reviewedAt,
+        reviewNote: r.reviewNote,
         reviewDueAt: r.reviewDueAt,
         version: r.version,
         embeddingAr: r.embeddingAr,
         embeddingEn: r.embeddingEn,
         normalizedSearchText: r.normalizedSearchText,
       })
-      .onConflictDoNothing();
+      // Seed-managed content is refreshed only while an admin has never touched the row (version 1);
+      // any admin edit or status change bumps the version and is never overwritten.
+      .onConflictDoUpdate({
+        target: knowledgeRules.id,
+        set: {
+          titleAr: r.titleAr,
+          titleEn: r.titleEn,
+          bodyAr: r.bodyAr,
+          bodyEn: r.bodyEn,
+          level: r.level,
+          topics: r.topics,
+          countries: r.countries,
+          contexts: r.contexts,
+          sensitivity: r.sensitivity,
+          sources: r.sources,
+          exceptions: r.exceptions,
+          status: r.status,
+          reviewedBy: r.reviewedBy,
+          reviewedAt: r.reviewedAt,
+          reviewNote: r.reviewNote,
+          reviewDueAt: r.reviewDueAt,
+          embeddingAr: r.embeddingAr,
+          embeddingEn: r.embeddingEn,
+          normalizedSearchText: r.normalizedSearchText,
+        },
+        setWhere: eq(knowledgeRules.version, 1),
+      });
   }
 
   for (const sc of SEED_SCENARIOS) {

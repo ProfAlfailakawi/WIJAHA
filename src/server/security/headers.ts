@@ -14,9 +14,11 @@ export function buildSecurityCsp(nonce: string, appEnv: ValidatedServerEnv): str
     connectSources.push('ws:', 'wss:');
   }
 
+  // Firebase Auth's popup flow loads Google's gapi loader and an auth iframe; both hosts are required for Google sign-in.
+  const googleAuthScripts = 'https://apis.google.com';
   const scriptSrc = appEnv.isProduction
-    ? `script-src 'self' 'nonce-${nonce}'`
-    : `script-src 'self' 'unsafe-inline' 'unsafe-eval'`;
+    ? `script-src 'self' 'nonce-${nonce}' ${googleAuthScripts}`
+    : `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${googleAuthScripts}`;
 
   return [
     "default-src 'self'",
@@ -25,6 +27,7 @@ export function buildSecurityCsp(nonce: string, appEnv: ValidatedServerEnv): str
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: https:",
     `connect-src ${connectSources.join(' ')}`,
+    "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://content.googleapis.com",
     "object-src 'none'",
     "base-uri 'self'",
     ...frameAncestor,

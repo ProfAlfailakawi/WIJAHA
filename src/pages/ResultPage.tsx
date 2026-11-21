@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../components/layout/AppShell';
 import { ExpertBridgeCard, ResultBlockRenderer } from '../components/result-blocks/ResultBlocks';
+import { ResultVisuals } from '../components/visuals/ResultVisuals';
 import {
   Button,
   DemoContentNotice,
@@ -441,7 +442,11 @@ export function ResultPage() {
                 </span>
                 <span className="inline-flex items-center gap-2 text-xs text-[color:var(--primary-fg)]/80">
                   <span className="w-1.5 h-1.5 rounded-full bg-[var(--gold)]" aria-hidden="true" />
-                  {refining ? t.result.streaming.generating : t.result.demoRuleBadge}
+                  {refining
+                    ? t.result.streaming.generating
+                    : state.demoContentActive === false
+                      ? t.result.reviewedBadge
+                      : t.result.demoRuleBadge}
                 </span>
               </div>
 
@@ -605,6 +610,8 @@ export function ResultPage() {
               ))}
             </div>
 
+            <ResultVisuals result={result} locale={locale} onInspectRule={(id) => { setHighlightedRuleId(id); setSourcesDrawerOpen(true); }} />
+
             {/* 5. Action Bar: ONE Primary Button + Calm Secondary Actions */}
             <section className="no-print rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -698,7 +705,11 @@ export function ResultPage() {
                     {t.result.trust.basedOn} {result.trust.ruleIds.length} {t.result.trust.rulesCount}
                   </span>
                   <span aria-hidden="true">·</span>
-                  <span>{t.result.trust.demoNotice}</span>
+                  <span>
+                    {state.demoContentActive === false
+                      ? t.result.trust.reviewedNotice
+                      : t.result.trust.demoNotice}
+                  </span>
                 </div>
 
                 <button
@@ -794,7 +805,9 @@ export function ResultPage() {
         open={sourcesDrawerOpen}
         onClose={() => setSourcesDrawerOpen(false)}
         title={t.result.trust.sourcesBtn}
-        subtitle={t.result.trust.demoNotice}
+        subtitle={
+          state.demoContentActive === false ? t.result.trust.reviewedNotice : t.result.trust.demoNotice
+        }
       >
         <div className="space-y-3">
           {(result?.trust.sourcesDetail || []).map((src) => (
@@ -816,6 +829,27 @@ export function ResultPage() {
               <p className="text-xs text-[var(--ink-3)]">
                 {src.sourceTitle} · <span className="font-mono">{src.status}</span>
               </p>
+              {src.references && src.references.length > 0 && (
+                <ul className="space-y-1 pt-1">
+                  {src.references.map((ref, ri) => (
+                    <li key={ri} className="text-xs text-[var(--ink-2)] leading-relaxed">
+                      {ref.url ? (
+                        <a
+                          href={ref.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline decoration-[var(--gold)] underline-offset-2 hover:text-[var(--ink)]"
+                        >
+                          {ref.title}
+                        </a>
+                      ) : (
+                        <span>{ref.title}</span>
+                      )}
+                      {ref.publisher ? <span className="text-[var(--ink-3)]"> — {ref.publisher}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           ))}
         </div>

@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import cookieParser from 'cookie-parser';
+import { previewCookieBridge } from './src/server/preview-cookie-bridge.ts';
 import * as dotenv from 'dotenv';
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import express, { type Request, type Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import { db } from './src/db/index.ts';
@@ -78,6 +79,7 @@ import {
   RuleStatusSchema,
 } from './src/server/knowledge/lifecycle.ts';
 import { checkSharedRateLimit } from './src/server/security/rate-limit.ts';
+import { cleanName, gradeExam, signCertificate, verifyCertificate } from './src/server/certificate/certificate.ts';
 import {
   applySecurityHeadersMiddleware,
   injectNonceIntoHtml,
@@ -108,6 +110,7 @@ import {
   retrieveHybridRules,
   embedAndStoreRule,
   scoreRulesPure,
+  allowedRuleStatuses,
 } from './src/server/knowledge/retrieval.ts';
 import {
   buildSimulationReportPure,
@@ -193,7 +196,25 @@ export async function buildExpressApp() {
   const emailProvider = createEmailProvider(appEnv);
   const billingProvider = createBillingProvider(appEnv);
   const app = express();
+  // Public previews can hide the admin/reviewer demo accounts (DEMO_ALLOW_PRIVILEGED=false).
+  const demoPrivilegedEnabled = process.env.DEMO_ALLOW_PRIVILEGED !== 'false';
+  // True while any unreviewed demo rule exists; the UI shows "demo content" notices only then (cached 60s).
+  let demoContentCache: { at: number; value: boolean } | null = null;
+  const getDemoContentActive = async (): Promise<boolean> => {
+    if (demoContentCache && Date.now() - demoContentCache.at < 60_000) return demoContentCache.value;
+    try {
+      const [row] = await db.select({ n: count() }).from(knowledgeRules).where(eq(knowledgeRules.status, 'draft_demo'));
+      demoContentCache = { at: Date.now(), value: Number(row?.n ?? 0) > 0 };
+    } catch {
+      demoContentCache = { at: Date.now(), value: true };
+    }
+    return demoContentCache.value;
+  };
+  const PRIVILEGED_DEMO_EMAILS = ['admin@wijaha.demo', 'yousef@wijaha.demo'];
   app.set('trust proxy', 1);
+  if (process.env.COOKIE_BRIDGE === 'true') {
+    app.use(previewCookieBridge());
+  }
 
   // Signed Billing Webhook MUST read raw bytes BEFORE express.json() (A3)
   app.post(
@@ -284,11 +305,97 @@ export async function buildExpressApp() {
   // 1. Auth, Session, Account & Multi-Tenant Org Endpoints
   // -------------------------------------------------------------------------
 
-  app.get('/api/config', (_req, res) => {
+  app.get('/api/config', async (_req, res) => {
     res.json({
       demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
       aiMode: getAiProviderStatus().mode,
     });
+  });
+
+  // Certificate: the exam is graded here (the answer key never leaves the server); a pass returns an HMAC-signed code.
+  app.post('/api/certificate/exam', async (req, res) => {
+    try {
+      const allowed = await checkSharedRateLimit(`cert_exam:${hashIp(req.ip)}`, 20, 60 * 60_000);
+      if (!allowed) {
+        sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+        return;
+      }
+      const answers = req.body?.answers;
+      if (!answers || typeof answers !== 'object') {
+        sendApiError(res, 400, 'INVALID_ANSWERS', 'errors.validationError');
+        return;
+      }
+      const grade = gradeExam(answers as Record<string, unknown>);
+      let code: string | undefined;
+      if (grade.passed) {
+        const name = cleanName(req.body?.name);
+        if (!name) {
+          sendApiError(res, 400, 'INVALID_NAME', 'errors.validationError');
+          return;
+        }
+        code = signCertificate(appEnv.sessionSecret, name, grade.correct, grade.total);
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ ...grade, code });
+    } catch {
+      sendApiError(res, 500, 'CERT_FAILED', 'home.networkError');
+    }
+  });
+
+  app.get('/api/certificate/verify', async (req, res) => {
+    const allowed = await checkSharedRateLimit(`cert_verify:${hashIp(req.ip)}`, 60, 60_000);
+    if (!allowed) {
+      sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
+      return;
+    }
+    const v = verifyCertificate(appEnv.sessionSecret, String(req.query.code ?? ''));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(v ? { valid: true, ...v } : { valid: false });
+  });
+
+  // Public, read-only: one rule that is currently eligible (approved) with its cited references.
+  app.get('/api/rules/:id', async (req, res) => {
+    try {
+      const id = String(req.params.id).slice(0, 40);
+      if (!/^R-[A-Z]+-\d{3,4}$/.test(id)) {
+        sendApiError(res, 400, 'INVALID_RULE_ID', 'errors.validationError');
+        return;
+      }
+      const rows = await db
+        .select()
+        .from(knowledgeRules)
+        .where(and(eq(knowledgeRules.id, id), inArray(knowledgeRules.status, allowedRuleStatuses())))
+        .limit(1);
+      if (rows.length === 0) {
+        sendApiError(res, 404, 'RULE_NOT_FOUND', 'notFound.title');
+        return;
+      }
+      const r = rows[0];
+      const srcIds = r.sources.map((x) => x.sourceId);
+      const srcRows = srcIds.length ? await db.select().from(sources).where(inArray(sources.id, srcIds)) : [];
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({
+        rule: {
+          id: r.id,
+          titleAr: r.titleAr,
+          titleEn: r.titleEn,
+          bodyAr: r.bodyAr,
+          bodyEn: r.bodyEn,
+          level: r.level,
+          sensitivity: r.sensitivity,
+          exceptions: r.exceptions,
+          status: r.status,
+          reviewedBy: r.reviewedBy,
+          reviewedAt: r.reviewedAt,
+          references: srcRows.map((x) => ({ title: x.title, publisher: x.publisher, url: x.url, reliability: x.reliability })),
+        },
+      });
+    } catch (error) {
+      console.error('GET /api/rules/:id failed:', error);
+      sendApiError(res, 500, 'RULE_READ_ERROR', 'home.networkError');
+    }
   });
 
   app.get('/api/auth/me', async (req: AuthenticatedRequest, res) => {
@@ -300,6 +407,8 @@ export async function buildExpressApp() {
           actor: null,
           aiMode: getAiProviderStatus().mode,
           demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
         });
         return;
       }
@@ -334,6 +443,8 @@ export async function buildExpressApp() {
         recentProjects: recentProjs.map((p) => ({ id: p.id, title: p.title })),
         aiMode: getAiProviderStatus().mode,
         demoLoginEnabled: appEnv.demoLoginEnabled,
+      demoPrivilegedEnabled: demoPrivilegedEnabled,
+      demoContentActive: await getDemoContentActive(),
       });
     } catch (error) {
       console.error('/api/auth/me failed:', error);
@@ -532,6 +643,10 @@ export async function buildExpressApp() {
         ];
         if (!allowedDemoEmails.includes(email)) {
           sendApiError(res, 403, 'NOT_DEMO_ACCOUNT', 'auth.dialogTitle');
+          return;
+        }
+        if (!demoPrivilegedEnabled && PRIVILEGED_DEMO_EMAILS.includes(email)) {
+          sendApiError(res, 403, 'PRIVILEGED_DEMO_DISABLED', 'auth.dialogTitle');
           return;
         }
 
@@ -3283,7 +3398,7 @@ export async function buildExpressApp() {
 async function startServer() {
   const app = await buildExpressApp();
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production' && process.env.SERVE_STATIC !== 'true') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
