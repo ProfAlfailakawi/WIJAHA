@@ -3407,7 +3407,8 @@ async function startServer() {
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath, { index: false }));
-    app.get('*', (_req, res) => {
+    // Express 5 (path-to-regexp 8) no longer accepts a bare '*'; '/{*splat}' matches every path including '/'.
+    app.get('/{*splat}', (_req, res) => {
       const indexFile = path.join(distPath, 'index.html');
       if (fs.existsSync(indexFile)) {
         const html = fs.readFileSync(indexFile, 'utf8');
