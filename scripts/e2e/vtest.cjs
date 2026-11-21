@@ -77,6 +77,9 @@ async function pngInfo(buf) {
       await p.keyboard.press('Escape');
     }
 
+    // Scroll-triggered entrance animations: visit every part of the page first, so nothing is still fading in when axe measures contrast.
+    await p.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 350) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 70)); } window.scrollTo(0, 0); });
+    await p.waitForTimeout(900);
     // A11y + overflow
     const ax = await new AxeBuilder({ page: p }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     const bad = ax.violations.filter((v) => ['serious', 'critical'].includes(v.impact));
