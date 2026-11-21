@@ -36,31 +36,31 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   await p.evaluate(() => localStorage.clear());
   await p.reload({ waitUntil: 'networkidle' });
   let o = await order(p);
-  log('sample list is sorted by precedence (minister right after the host)', o[0] === 'المضيف' && /ناصر/.test(o[1]) && /خالد/.test(o[2]), o.slice(0, 4).join(' | '));
+  log('sample list is sorted by precedence (minister right after the host)', o[0] === 'المضيف' && /٤/.test(o[1]) && /٣/.test(o[2]), o.slice(0, 4).join(' | '));
 
   // paste import
-  await p.locator('textarea[aria-label="الصق قائمة الضيوف"]').fill('الاسم\tالمنصب\nمحمد العلي\tمدير\nفهد الصباح\tوزير\nلينا حداد\tسفير');
+  await p.locator('textarea[aria-label="الصق قائمة الضيوف"]').fill('الاسم\tالمنصب\nضيف ص1\tمدير\nضيف ص2\tوزير\nضيف ص3\tسفير');
   await p.locator('[data-testid="import-paste"]').click();
   await p.waitForTimeout(500);
   o = await order(p);
-  log('pasted Excel text imports and orders (minister, ambassador, manager)', o.length === 4 && /فهد/.test(o[1]) && /لينا/.test(o[2]) && /محمد/.test(o[3]), o.join(' | '));
+  log('pasted Excel text imports and orders (minister, ambassador, manager)', o.length === 4 && /ص2/.test(o[1]) && /ص3/.test(o[2]) && /ص1/.test(o[3]), o.join(' | '));
   log('status message confirms the import', /3/.test(await p.locator('[data-testid="studio-status"]').innerText()));
 
   // real xlsx upload
   const xlsxPath = path.join(os.tmpdir(), 'guests.xlsx');
-  fs.writeFileSync(xlsxPath, makeXlsx([['الاسم', 'المنصب'], ['نورة الحمد', 'وكيل وزارة'], ['سعد الراشد', 'مستشار'], ['ريم الكندري', 'رئيس جامعة'], ['بدر السالم', 'وزير']]));
+  fs.writeFileSync(xlsxPath, makeXlsx([['الاسم', 'المنصب'], ['ضيف س1', 'وكيل وزارة'], ['ضيف س2', 'مستشار'], ['ضيف س3', 'رئيس جامعة'], ['ضيف س4', 'وزير']]));
   await p.locator('[data-testid="guest-file"]').setInputFiles(xlsxPath);
   await p.waitForTimeout(700);
   o = await order(p);
-  log('a real .xlsx file imports (4 guests, minister first)', o.length === 5 && /بدر/.test(o[1]), o.join(' | '));
+  log('a real .xlsx file imports (4 guests, minister first)', o.length === 5 && /س4/.test(o[1]), o.join(' | '));
 
   // CSV upload with quotes
   const csvPath = path.join(os.tmpdir(), 'guests.csv');
-  fs.writeFileSync(csvPath, 'Name,Title\n"Al-Fahd, Salem",Minister\nKhalid,Director\nNada,Ambassador\n');
+  fs.writeFileSync(csvPath, 'Name,Title\n"Doe, A",Minister\nGuest B,Director\nGuest C,Ambassador\n');
   await p.locator('[data-testid="guest-file"]').setInputFiles(csvPath);
   await p.waitForTimeout(500);
   o = await order(p);
-  log('CSV with a quoted comma imports', o.length === 4 && /Al-Fahd, Salem/.test(o[1]), o.join(' | '));
+  log('CSV with a quoted comma imports', o.length === 4 && /Doe, A/.test(o[1]), o.join(' | '));
 
   // drag and drop swap: seat of rank 3 onto rank 4
   const seats = p.locator('svg[aria-label="مخطط الجلوس القابل للسحب"] g[role="button"]');

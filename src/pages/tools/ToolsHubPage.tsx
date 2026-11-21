@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Award, ClipboardList, ShieldCheck, Building2, CalendarClock, Camera, Mic, Radar, Radio, Shapes, Armchair } from 'lucide-react';
+import { PersonStanding, Award, ClipboardList, ShieldCheck, Building2, CalendarClock, Camera, Mic, Radar, Radio, Shapes, Armchair } from 'lucide-react';
 import { AppShell } from '../../components/layout/AppShell';
 import { useI18n } from '../../lib/i18n';
 import { card, Page, ToolHero } from './ui';
 
 const TOOLS = [
+  { to: '/posture', icon: PersonStanding, ar: 'لغة الجسد ثلاثية الأبعاد', en: '3D body language', dAr: 'مجسم يدور بإصبعك: المصافحة والجلوس وجلسة المجلس وما يجب تجنبه.', dEn: 'A rotatable figure: handshake, seating, majlis posture and what to avoid.' },
   { to: '/event', icon: ClipboardList, ar: 'ملف الفعالية', en: 'Event file', dAr: 'أدخل فعاليتك مرة واحدة: دعوة وتقويم وجدول حي وفحص تعارض وجاهزية.', dEn: 'Enter your event once: invitation, calendar, live run sheet, clash check and readiness.' },
   { to: '/seating', icon: Armchair, ar: 'مولّد الجلوس', en: 'Seating studio', dAr: 'من قائمة ضيوف Excel إلى مخطط جلوس وبطاقات أسماء.', dEn: 'From an Excel guest list to a seating plan and name cards.' },
   { to: '/occasions', icon: Radar, ar: 'رادار المناسبات', en: 'Occasions radar', dAr: 'أيام شركائك الوطنية والدينية مع تهنئة وتقويم.', dEn: 'Partners’ national and religious days with greetings and a calendar.' },

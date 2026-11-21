@@ -637,9 +637,9 @@ export async function buildExpressApp() {
         const allowedDemoEmails = [
           'admin@wijaha.demo',
           'yousef@wijaha.demo',
-          'sara@org-alpha.demo',
-          'fahad@org-beta.demo',
-          'noura@individual.demo',
+          'owner@org-alpha.demo',
+          'owner@org-beta.demo',
+          'member@individual.demo',
         ];
         if (!allowedDemoEmails.includes(email)) {
           sendApiError(res, 403, 'NOT_DEMO_ACCOUNT', 'auth.dialogTitle');

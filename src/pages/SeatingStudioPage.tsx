@@ -5,6 +5,8 @@ import { downloadBlob, downloadPng } from '../components/visuals/export.ts';
 import { NameCardPage, CARDS_PER_PAGE, type CardPerson } from '../components/visuals/NameCards';
 import { SeatingFloorplan, LAYOUT_NAMES, type FloorSeat } from '../components/visuals/SeatingFloorplan';
 import { tr } from '../components/visuals/svg-kit.tsx';
+import { Hall3D, type Hall3DHandle } from '../components/three/Hall3D';
+import type { CameraPreset, HallSeat } from '../components/three/hall-scene.ts';
 import { useI18n } from '../lib/i18n';
 import { MAX_GUESTS, parseGuestFile, parseGuestText } from '../shared/visuals/guest-import.ts';
 import { findViolations, sortByPrecedence, swap, titleTier, type Guest } from '../shared/visuals/precedence.ts';
@@ -22,22 +24,22 @@ interface Saved {
 }
 
 const SAMPLE_AR: Guest[] = [
-  { id: 'g1', name: 'سارة المطيري', title: 'مدير إدارة' },
-  { id: 'g2', name: 'أحمد الصالح', title: 'مستشار' },
-  { id: 'g3', name: 'سعادة خالد المنصور', title: 'سفير' },
-  { id: 'g4', name: 'معالي ناصر الراشد', title: 'وزير الصناعة' },
-  { id: 'g5', name: 'د. يوسف النجار', title: 'رئيس جامعة' },
-  { id: 'g6', name: 'م. فيصل الحمد', title: 'الرئيس التنفيذي' },
-  { id: 'g7', name: 'د. هند العمر', title: 'وكيل وزارة' },
+  { id: 'g1', name: 'ضيف ١', title: 'مدير إدارة' },
+  { id: 'g2', name: 'ضيف ٢', title: 'مستشار' },
+  { id: 'g3', name: 'ضيف ٣', title: 'سفير' },
+  { id: 'g4', name: 'ضيف ٤', title: 'وزير الصناعة' },
+  { id: 'g5', name: 'ضيف ٥', title: 'رئيس جامعة' },
+  { id: 'g6', name: 'ضيف ٦', title: 'الرئيس التنفيذي' },
+  { id: 'g7', name: 'ضيف ٧', title: 'وكيل وزارة' },
 ];
 const SAMPLE_EN: Guest[] = [
-  { id: 'g1', name: 'Sara Al-Mutairi', title: 'Department Manager' },
-  { id: 'g2', name: 'Ahmed Al-Saleh', title: 'Advisor' },
-  { id: 'g3', name: 'Khalid Al-Mansour', title: 'Ambassador' },
-  { id: 'g4', name: 'Nasser Al-Rashed', title: 'Minister of Industry' },
-  { id: 'g5', name: 'Dr. Yousef Al-Najjar', title: 'University President' },
-  { id: 'g6', name: 'Faisal Al-Hamad', title: 'Chief Executive Officer' },
-  { id: 'g7', name: 'Dr. Hind Al-Omar', title: 'Undersecretary' },
+  { id: 'g1', name: 'Guest 1', title: 'Department Manager' },
+  { id: 'g2', name: 'Guest 2', title: 'Advisor' },
+  { id: 'g3', name: 'Guest 3', title: 'Ambassador' },
+  { id: 'g4', name: 'Guest 4', title: 'Minister of Industry' },
+  { id: 'g5', name: 'Guest 5', title: 'University President' },
+  { id: 'g6', name: 'Guest 6', title: 'Chief Executive Officer' },
+  { id: 'g7', name: 'Guest 7', title: 'Undersecretary' },
 ];
 
 function load(): Saved | null {
@@ -73,6 +75,11 @@ export function SeatingStudioPage() {
   const [selected, setSelected] = useState<string>('');
   const [playKey, setPlayKey] = useState(0);
   const planRef = useRef<SVGSVGElement>(null);
+  const hallRef = useRef<Hall3DHandle>(null);
+  const [view, setView] = useState<'2d' | '3d'>('2d');
+  const [preset, setPreset] = useState<CameraPreset>('overview');
+  const [presetNonce, setPresetNonce] = useState(0);
+  const [no3d, setNo3d] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const pageRefs = useRef<Array<SVGSVGElement | null>>([]);
 
@@ -113,6 +120,14 @@ export function SeatingStudioPage() {
     [plan, people],
   );
 
+  const hallSeats: HallSeat[] = useMemo(
+    () =>
+      plan.seats.map((spot) => {
+        const person = people[spot.rank - 1] ?? people[0];
+        return { id: person.id, label: person.name, role: person.title || undefined, rank: spot.rank, x: spot.x, y: spot.y, facing: spot.facing };
+      }),
+    [plan, people],
+  );
   const violations = useMemo(() => findViolations(shown), [shown]);
   const warnIds = violations.map((v) => v.lower);
   const nameOf = (id: string) => guests.find((g) => g.id === id);
@@ -205,7 +220,7 @@ export function SeatingStudioPage() {
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
                 rows={4}
-                placeholder={ar ? 'سالم الفهد\tوزير\nخالد المنصور\tسفير' : 'Salem Al-Fahd\tMinister\nKhalid Al-Mansour\tAmbassador'}
+                placeholder={ar ? 'الضيف الأول\tوزير\nالضيف الثاني\tسفير' : 'First guest\tMinister\nSecond guest\tAmbassador'}
                 aria-label={ar ? 'الصق قائمة الضيوف' : 'Paste the guest list'}
                 className="mt-3 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 text-sm leading-relaxed"
               />
@@ -308,9 +323,35 @@ export function SeatingStudioPage() {
               <p className="text-xs text-[var(--ink-3)] mb-3 leading-relaxed">
                 {ar ? 'اسحب أي ضيف وأفلته على مقعد آخر للتبديل. ترتيب الأسبقية الرسمي تحدده الجهة المضيفة؛ هذا ترتيب مقترح من المناصب.' : "Drag any guest onto another seat to swap. The official order of precedence is set by the host; this is a suggestion from titles."}
               </p>
+              <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label={ar ? 'نمط العرض' : 'View mode'}>
+                <button type="button" aria-pressed={view === '2d'} className={btn} onClick={() => setView('2d')} data-testid="view-2d">{ar ? 'مخطط ثنائي' : '2D plan'}</button>
+                <button type="button" aria-pressed={view === '3d'} className={btn} onClick={() => setView('3d')} data-testid="view-3d">{ar ? 'قاعة ثلاثية الأبعاد' : '3D hall'}</button>
+                {view === '3d' && !no3d && (
+                  <>
+                    {([['overview', ar ? 'نظرة عامة' : 'Overview'], ['chief', ar ? 'من مقعد الضيف الرئيسي' : 'Chief guest’s view'], ['host', ar ? 'من مقعد المضيف' : 'Host’s view'], ['door', ar ? 'من الباب' : 'From the door']] as Array<[CameraPreset, string]>).map(([k, label]) => (
+                      <button key={k} type="button" aria-pressed={preset === k} className={btn} onClick={() => { setPreset(k); setPresetNonce((n) => n + 1); }} data-testid={`cam-${k}`}>{label}</button>
+                    ))}
+                    <button type="button" className={btn} onClick={() => void hallRef.current?.snapshot().then((b) => downloadBlob(b, 'wijaha-hall-3d.png'))} data-testid="hall-png">
+                      <ImageDown className="w-4 h-4" aria-hidden="true" />
+                      {ar ? 'لقطة PNG' : 'PNG snapshot'}
+                    </button>
+                  </>
+                )}
+              </div>
+              {view === '3d' ? (
+                no3d ? (
+                  <p role="alert" className="rounded-2xl border border-[var(--c-rose)] p-4 text-[var(--ink)]" data-testid="hall-fallback">{ar ? 'جهازك لا يدعم العرض ثلاثي الأبعاد؛ استخدم المخطط الثنائي.' : 'Your device does not support 3D; use the 2D plan.'}</p>
+                ) : (
+                  <>
+                    <Hall3D ref={hallRef} plan={plan} seats={hallSeats} selectedId={selected} warnIds={warnIds} rtl={ar} preset={preset} presetNonce={presetNonce} onPick={(id) => setSelected(id)} onUnsupported={() => setNo3d(true)} ariaLabel={ar ? 'قاعة ثلاثية الأبعاد تدور بإصبعك' : 'Rotatable 3D hall'} />
+                    <p className="mt-2 text-xs text-[var(--ink-3)]">{ar ? 'اسحب للتدوير، وقرّب بالقرص، وانقر ضيفاً لتحديده. تبديل المقاعد يتم من المخطط الثنائي.' : 'Drag to rotate, pinch to zoom, tap a guest to select. Swap seats in the 2D plan.'}</p>
+                  </>
+                )
+              ) : (
               <div className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-2 sm:p-3 overflow-hidden">
                 <SeatingFloorplan ref={planRef} layout={layout} seats={floorSeats} locale={locale} selectedId={selected} onSelect={setSelected} animateKey={playKey} onSwap={doSwap} showNames warnIds={warnIds} ariaLabel={ar ? 'مخطط الجلوس القابل للسحب' : 'Draggable seating plan'} />
               </div>
+              )}
 
               {violations.length > 0 && (
                 <div className="mt-3 rounded-2xl border border-[#d97706]/50 bg-[#fff6e5] text-[#5a3200] p-3.5 space-y-2" role="alert" data-testid="studio-warnings">

@@ -95,7 +95,7 @@ async function pageChecks(ctx, path, label, opts = {}) {
   await page.waitForTimeout(800);
   const hasAdminBtn = await page.getByText('admin@wijaha.demo').count();
   log('admin demo account hidden in dialog', hasAdminBtn === 0);
-  const noura = page.getByText('noura@individual.demo');
+  const noura = page.getByText('member@individual.demo');
   log('demo login buttons visible', (await noura.count()) > 0);
   if (await noura.count()) {
     await noura.first().click();

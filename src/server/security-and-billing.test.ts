@@ -9,7 +9,7 @@ import {
 
 const orgAlphaOwner: AuthActor = {
   uid: 'demo:sara',
-  email: 'sara@org-alpha.demo',
+  email: 'owner@org-alpha.demo',
   name: 'Sara',
   platformRole: 'user',
   activeOrgId: 'org_alpha',
@@ -20,8 +20,8 @@ const orgAlphaOwner: AuthActor = {
 
 const orgBetaOwner: AuthActor = {
   uid: 'demo:fahad',
-  email: 'fahad@org-beta.demo',
-  name: 'Fahad',
+  email: 'owner@org-beta.demo',
+  name: 'Test Owner B',
   platformRole: 'user',
   activeOrgId: 'org_beta',
   orgRole: 'org_owner',

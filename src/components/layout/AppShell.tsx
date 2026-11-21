@@ -42,14 +42,14 @@ export function SignInModal() {
 
   const demoAccounts = [
     {
-      email: 'sara@org-alpha.demo',
-      labelAr: 'سارة المنصور — مالكة مؤسسة (باقة الفريق)',
-      labelEn: 'Sara Al-Mansour — Org Owner (Team Plan)',
+      email: 'owner@org-alpha.demo',
+      labelAr: 'مالك مؤسسة (باقة الفريق)',
+      labelEn: 'Org Owner (Team Plan)',
     },
     {
-      email: 'noura@individual.demo',
-      labelAr: 'نورة العتيبي — مستخدم فردي (الباقة المجانية)',
-      labelEn: 'Noura Al-Otaibi — Individual (Free Plan)',
+      email: 'member@individual.demo',
+      labelAr: 'مستخدم فردي (الباقة المجانية)',
+      labelEn: 'Individual (Free Plan)',
     },
     {
       email: 'yousef@wijaha.demo',
