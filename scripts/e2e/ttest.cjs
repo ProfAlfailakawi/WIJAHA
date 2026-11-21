@@ -278,6 +278,33 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
     await overflow('posture');
   }
 
+  // ------------------------------------------------------------- 3D showcase
+  {
+    await p.goto(BASE + '/showcase', { waitUntil: 'networkidle' });
+    for (const k of ['table', 'podium']) {
+      await p.click(`[data-testid="scene-${k}"]`);
+      await p.waitForSelector('[data-testid="showcase"][data-ready="true"]', { timeout: 90000 });
+      await p.waitForTimeout(700);
+      const n = await p.evaluate(async () => {
+        const c = document.querySelector('[data-testid="showcase-canvas"]');
+        if (!c) return -1;
+        await new Promise((r) => requestAnimationFrame(() => r()));
+        const t = document.createElement('canvas'); t.width = 64; t.height = 40;
+        const g = t.getContext('2d'); g.drawImage(c, 0, 0, 64, 40);
+        const d = g.getImageData(0, 0, 64, 40).data; const s = new Set();
+        for (let i = 0; i < d.length; i += 4) s.add(((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4));
+        return s.size;
+      });
+      log(`showcase "${k}" renders a real scene`, n > 10, `${n} distinct colours`);
+    }
+    const [d6] = await Promise.all([p.waitForEvent('download'), p.click('[data-testid="showcase-png"]')]);
+    const sf = path.join(tmp, 'show.png');
+    await d6.saveAs(sf);
+    log('showcase PNG downloads', png(fs.readFileSync(sf)), `${fs.statSync(sf).size} bytes`);
+    await axe('showcase');
+    await overflow('showcase');
+  }
+
   // ------------------------------------------------------------- English + mobile
   for (const [route, re] of [['/live', /Protocol LIVE|event-day/i], ['/learn', /Learn|certificate/i], ['/voice', /Practise|Voice/i], ['/photo-check', /hall|invitation/i], ['/org-protocol', /manual/i]]) {
     await p.goto(BASE + route, { waitUntil: 'networkidle' });
@@ -288,7 +315,7 @@ const png = (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a';
   await ctx.close();
   const m = await b.newContext({ viewport: { width: 375, height: 800 }, locale: 'ar' });
   const mp = await m.newPage();
-  for (const r of ['/tools', '/posture', '/live', '/voice', '/photo-check', '/org-protocol', '/learn']) {
+  for (const r of ['/tools', '/showcase', '/posture', '/live', '/voice', '/photo-check', '/org-protocol', '/learn']) {
     await mp.goto(BASE + r, { waitUntil: 'networkidle' });
     log(`[mobile] ${r} has no horizontal overflow`, await mp.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   }
