@@ -338,6 +338,9 @@ html[data-device="duo"] .wj-duo-new {
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 100px), transparent calc(100% - 24px));
     mask-image: linear-gradient(to bottom, #000 calc(100% - 100px), transparent calc(100% - 24px));
   }
+  /* .wj-main is a flex column with a fixed height here: without this its sections (the home hero) shrank
+     below their content and were cut by their own overflow:hidden. The pane scrolls instead. */
+  html[data-device="duo"] .wj-main > * { flex-shrink: 0; }
   /* A pane is half the screen: wide-screen grids fold back. */
   html[data-device="duo"] .wj-main [class*="md:grid-cols-"],
   html[data-device="duo"] .wj-main [class*="lg:grid-cols-"] { grid-template-columns: minmax(0, 1fr); }
