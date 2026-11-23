@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/duo.css";
+@import "./styles/dock-motion.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
