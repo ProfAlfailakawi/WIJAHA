@@ -24,7 +24,8 @@
   --duo-sa-l: env(safe-area-inset-left, 0px);
   --duo-bar-h: 60px;
   --duo-gap: 44px;
-  --duo-clock-end: 150px;
+  /* the clock/battery widget ends at ~165px on the outer screen: the column starts 8px below it */
+  --duo-clock-end: 174px;
   --duo-glass: color-mix(in srgb, var(--surface) 88%, transparent);
   --duo-tint: var(--surface-2);
 }
@@ -389,4 +390,82 @@ html[data-device="duo"] .wj-duo-new {
   /* Dialogs open inside the end pane, never across the hinge. */
   html[data-device="duo"] .wj-dialog { justify-content: flex-end; }
   html[data-device="duo"] .wj-dialog > div { width: calc(var(--duo-pane) - 24px); max-width: none; }
+}
+
+/* ==========================================================================
+   Review 2026-11-23 (every page x every posture).
+   ========================================================================== */
+/* Single column: the visual library's section strip sticks under the top bar (it stuck at 64px
+   under a 52px bar, so the page showed through a 12px slit between them). */
+@media screen and (orientation: portrait), screen and (orientation: landscape) and (max-height: 520px) {
+  html[data-device="duo"] .wj-main nav.sticky.top-16 { top: calc(3.25rem + var(--duo-sa-t)); }
+  /* Outer landscape is wider than the sm breakpoint: the invite row (email | role | send) overflowed
+     the screen because the email field kept its intrinsic width. */
+  html[data-device="duo"] .wj-main input { min-width: 0; }
+}
+/* App: the top bar reaches up through the clock strip (inner portrait); it is solid there, so the
+   page scrolling beneath it never reads through under the clock. */
+html[data-device="duo"][data-shell="app"] .wj-header {
+  background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media screen and (orientation: landscape) and (min-width: 800px) and (min-height: 521px) {
+  /* The two panes meet on the hinge (the middle of the screen), not in the middle of what is left
+     beside the clock column: with 1fr 1fr the gap sat 42px off the hinge and the index pane started on it. */
+  html[dir="rtl"][data-device="duo"] .wj-shell {
+    grid-template-columns: calc(50vw - var(--duo-gap) / 2 - var(--duo-sa-r)) calc(50vw - var(--duo-gap) / 2 - var(--duo-sa-l));
+  }
+  html[dir="ltr"][data-device="duo"] .wj-shell {
+    grid-template-columns: calc(50vw - var(--duo-gap) / 2 - var(--duo-sa-l)) calc(50vw - var(--duo-gap) / 2 - var(--duo-sa-r));
+  }
+  /* The app bar stays inside its pane: the Latin name goes and the account name is shorter, so the
+     bar no longer runs across the hinge into the page. */
+  html[data-device="duo"] .wj-header .tracking-widest { display: none; }
+  html[data-device="duo"] .wj-header > div:first-child { max-width: none; }
+  html[data-device="duo"] .wj-header > div:first-child > div:last-child { gap: 0.25rem; min-width: 0; }
+  html[data-device="duo"] .wj-header .max-w-\[130px\] { max-width: 88px; }
+
+  /* A pane is ~400px: three-up setup rows and side-by-side form rows stack, as on a phone. */
+  html[data-device="duo"] .wj-main section.grid[class*="sm:grid-cols-3"] { grid-template-columns: minmax(0, 1fr); }
+  html[data-device="duo"] .wj-main [class*="sm:flex-row"] { flex-direction: column; }
+  html[data-device="duo"] .wj-main input { min-width: 0; }
+
+  /* App with the clock column: the navigation is a capsule in that column under the clock (as on
+     the outer screen), not a toolbar floating over the bottom of one page. The page pane keeps its
+     full height and fades only at its foot. */
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-new {
+    top: 124px;
+    bottom: auto;
+  }
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-bar {
+    top: calc(124px + 50px + 12px);
+    bottom: auto;
+    width: 58px;
+    height: auto;
+    flex-direction: column;
+    padding: 5px;
+  }
+  /* centred in the clock column, whichever side it is on (physical sides, like the rules above) */
+  html[data-device="duo"][data-shell="app"][data-widget-side="right"] :is(.wj-duo-bar, .wj-duo-new) { left: auto; right: calc((var(--duo-sa-r) - 58px) / 2); }
+  html[data-device="duo"][data-shell="app"][data-widget-side="right"] .wj-duo-new { right: calc((var(--duo-sa-r) - 50px) / 2); }
+  html[data-device="duo"][data-shell="app"][data-widget-side="left"] :is(.wj-duo-bar, .wj-duo-new) { right: auto; left: calc((var(--duo-sa-l) - 58px) / 2); }
+  html[data-device="duo"][data-shell="app"][data-widget-side="left"] .wj-duo-new { left: calc((var(--duo-sa-l) - 50px) / 2); }
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-tab {
+    flex: none;
+    width: 46px;
+    height: 46px;
+    min-height: 46px;
+    border-radius: 999px;
+  }
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-tab span { display: none; }
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-main {
+    padding-bottom: calc(24px + var(--duo-sa-b));
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 56px), transparent);
+  }
+  html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-toast {
+    bottom: calc(16px + var(--duo-sa-b));
+  }
 }

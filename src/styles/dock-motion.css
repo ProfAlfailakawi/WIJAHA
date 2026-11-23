@@ -1,0 +1,67 @@
+/* ==========================================================================
+   Navigation capsule motion (src/lib/dockMotion.ts), presentation only.
+   Duo: one indicator (.dm-ind) slides under the current destination instead of a background
+   jumping between tabs; a tab presses under the finger at once and springs back; the icon that
+   becomes current breathes once; the capsule reshapes continuously on rotation and folding, and
+   steps aside for the keyboard. Phone: no destination bar (the header menu opens a drawer), so
+   the menu button only gets the press. Position, size and order are unchanged; iPad and desktop
+   never change. Reduced motion: instant.
+   ========================================================================== */
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] {
+  /* the indicator wears the old current-tab background */
+  --dm-ind-bg: var(--surface-2);
+  --dm-ind-ring: color-mix(in srgb, var(--line) 70%, transparent);
+  --dm-ind-radius: 14px;
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease;
+}
+html[data-device="duo"][data-shell="app"]:not([data-widget-side="none"]) .wj-duo-bar[data-dm-ready] { --dm-ind-radius: 999px; }
+/* the bar is a flex row in the page's bottom strip: a reference for the indicator, lowest priority */
+:where(html[data-device="duo"] .wj-duo-bar) { position: relative; }
+html[data-device="duo"] .wj-duo-bar > .dm-ind {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  border-radius: var(--dm-ind-radius);
+  background: var(--dm-ind-bg);
+  box-shadow: inset 0 0 0 1px var(--dm-ind-ring);
+  transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+}
+html[data-device="duo"] .wj-duo-bar > .dm-ind.dm-press { transform: scale(0.94); transition-duration: 0.09s; transition-timing-function: ease-out; }
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab {
+  position: relative;
+  z-index: 1;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.2s ease;
+}
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab[aria-current="page"] { background: transparent; }
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab.dm-press { transform: scale(0.9); transition-duration: 0.09s; transition-timing-function: ease-out; }
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab[aria-current="page"] svg { animation: dm-pop 0.38s cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes dm-pop { 0% { transform: scale(0.84); } 55% { transform: scale(1.07); } 100% { transform: none; } }
+html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* «+» beside the capsule: the same press */
+html[data-device="duo"] .wj-duo-new { -webkit-tap-highlight-color: transparent; transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1); }
+html[data-device="duo"] .wj-duo-new:active { transform: scale(0.9); transition-duration: 0.09s; transition-timing-function: ease-out; }
+/* the keyboard: the capsule steps aside and comes back when it closes */
+html[data-device="duo"] .wj-duo-bar.dm-kb { transform: translateY(calc(100% + 28px)); opacity: 0; pointer-events: none; }
+
+/* Phone: the header menu button presses. */
+@media (hover: none) and (max-width: 500px) {
+  html:not([data-device="duo"]) .wj-menu-btn { -webkit-tap-highlight-color: transparent; transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease; }
+  html:not([data-device="duo"]) .wj-menu-btn:active { transform: scale(0.9); transition-duration: 0.09s; transition-timing-function: ease-out; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-device="duo"] .wj-duo-bar[data-dm-ready],
+  html[data-device="duo"] .wj-duo-bar > .dm-ind,
+  html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab,
+  html[data-device="duo"] .wj-duo-new,
+  html .wj-menu-btn { transition: none; }
+  html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab.dm-press,
+  html[data-device="duo"] .wj-duo-new:active,
+  html:not([data-device="duo"]) .wj-menu-btn:active { transform: scale(0.96); }
+  html[data-device="duo"] .wj-duo-bar[data-dm-ready] .wj-duo-tab[aria-current="page"] svg { animation: none; }
+}
+@media (prefers-contrast: more) {
+  html[data-device="duo"] .wj-duo-bar[data-dm-ready] { --dm-ind-ring: var(--gold); }
+}
