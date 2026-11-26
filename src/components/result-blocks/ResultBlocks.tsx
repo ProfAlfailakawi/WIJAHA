@@ -27,6 +27,7 @@ import type { HallSeat } from '../three/hall-scene.ts';
 import { fromPercent, planLayout } from '../../shared/visuals/seating.ts';
 import { VisualTimeline } from '../visuals/VisualTimeline';
 import { useI18n } from '../../lib/i18n';
+import { commerceVisible } from '../../lib/appleNativeShell';
 import type {
   AnswerBlock,
   ChecklistBlock,
@@ -965,7 +966,8 @@ export function ExpertBridgeCard({
     <aside className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/75 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div className="space-y-1">
         <p className="text-xs font-medium text-[var(--gold-ink)]">
-          {suggestion.expertName} · {suggestion.priceLabel}
+          {suggestion.expertName}
+          {commerceVisible() && <> · {suggestion.priceLabel}</>}
         </p>
         <h3 className="text-base font-semibold text-[var(--ink)]">{suggestion.serviceTitle}</h3>
         <p className="text-sm text-[var(--ink-2)] leading-relaxed">{suggestion.reason}</p>

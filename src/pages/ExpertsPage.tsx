@@ -10,6 +10,7 @@ import {
 } from '../components/ui/Primitives';
 import { useAuth } from '../lib/auth-client';
 import { useI18n } from '../lib/i18n';
+import { commerceVisible, followCheckoutUrl } from '../lib/appleNativeShell';
 
 interface ExpertRecord {
   id: string;
@@ -151,7 +152,9 @@ export function ExpertsListPage() {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[var(--gold-ink)] tabular-nums">
                         <span>
-                          {srv.pricingType === 'fixed' && srv.priceAmountKwd
+                          {!commerceVisible()
+                            ? null
+                            : srv.pricingType === 'fixed' && srv.priceAmountKwd
                             ? locale === 'ar'
                               ? `${srv.priceAmountKwd} د.ك (سعر ثابت)`
                               : `${srv.priceAmountKwd} KWD (Fixed)`
@@ -280,11 +283,13 @@ export function ExpertDetailPage() {
                     className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-[var(--gold-ink)] tabular-nums">
-                        {srv.pricingType === 'fixed' && srv.priceAmountKwd
-                          ? `${srv.priceAmountKwd} KWD`
-                          : t.pricing.quote}
-                      </p>
+                      {commerceVisible() && (
+                        <p className="text-xs font-semibold text-[var(--gold-ink)] tabular-nums">
+                          {srv.pricingType === 'fixed' && srv.priceAmountKwd
+                            ? `${srv.priceAmountKwd} KWD`
+                            : t.pricing.quote}
+                        </p>
+                      )}
                       <h3 className="text-base font-bold text-[var(--ink)]">
                         {locale === 'ar' ? srv.titleAr : srv.titleEn}
                       </h3>
@@ -390,8 +395,8 @@ export function ServiceRequestPage() {
           body: JSON.stringify({ sessionId: data.checkoutSessionId }),
         });
         setTicketId(data.id);
-      } else if (data.checkoutUrl && data.checkoutUrl.startsWith('https://')) {
-        window.location.assign(data.checkoutUrl);
+      } else if (followCheckoutUrl(data.checkoutUrl)) {
+        window.location.assign(data.checkoutUrl as string);
       } else {
         setTicketId(data.id);
       }
@@ -443,7 +448,7 @@ export function ServiceRequestPage() {
             className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-4"
           >
             {submitError && <ErrorBanner message={submitError} />}
-            {service?.pricingType === 'fixed' && (
+            {service?.pricingType === 'fixed' && commerceVisible() && (
               <div className="rounded-lg bg-[var(--surface-2)] p-3.5 text-xs text-[var(--ink-2)] flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[var(--gold-ink)] shrink-0" />
                 <span>

@@ -31,6 +31,7 @@ import {
 } from '../components/ui/Primitives';
 import { useAuth } from '../lib/auth-client';
 import { useI18n } from '../lib/i18n';
+import { commerceVisible } from '../lib/appleNativeShell';
 import type { Action, ResultBlock, WijahaResult } from '../shared/types';
 
 export function ResultPage() {
@@ -247,7 +248,11 @@ export function ResultPage() {
         const err = await res.json().catch(() => ({}));
         if (err?.error?.code === 'PROJECTS_LIMIT_REACHED') {
           setToast(
-            locale === 'ar'
+            !commerceVisible()
+              ? locale === 'ar'
+                ? 'وصلت إلى حد المشاريع في باقتك الحالية. احذف مشروعًا قديمًا لحفظ هذا.'
+                : 'Project limit reached on your current plan. Remove an older project to save this one.'
+              : locale === 'ar'
               ? 'وصلت إلى حد المشاريع في باقتك الحالية. يمكنك الترقية لحفظ مشاريع إضافية.'
               : 'Project limit reached on your current plan. Upgrade to save more projects.',
           );
@@ -377,14 +382,29 @@ export function ResultPage() {
                 ? `استخدمت الحد الشهري لباقتك (${planLimitInfo.used}/${planLimitInfo.limit})`
                 : `Monthly plan limit reached (${planLimitInfo.used}/${planLimitInfo.limit})`}
             </h2>
-            <p className="text-sm text-[var(--ink-2)]">
-              {locale === 'ar'
-                ? `يتجدد رصيدك تلقائياً في ${planLimitInfo.resetDate}، أو يمكنك الترقية الفورية للمتابعة دون انقطاع.`
-                : `Your quota resets on ${planLimitInfo.resetDate}, or upgrade now to continue immediately.`}
-            </p>
-            <Button variant="primary" onClick={() => navigate('/pricing')}>
-              {t.nav.pricing}
-            </Button>
+            {commerceVisible() ? (
+              <>
+                <p className="text-sm text-[var(--ink-2)]">
+                  {locale === 'ar'
+                    ? `يتجدد رصيدك تلقائياً في ${planLimitInfo.resetDate}، أو يمكنك الترقية الفورية للمتابعة دون انقطاع.`
+                    : `Your quota resets on ${planLimitInfo.resetDate}, or upgrade now to continue immediately.`}
+                </p>
+                <Button variant="primary" onClick={() => navigate('/pricing')}>
+                  {t.nav.pricing}
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-[var(--ink-2)]">
+                  {locale === 'ar'
+                    ? `يتجدد رصيدك تلقائياً في ${planLimitInfo.resetDate}. وحتى ذلك الحين تبقى الأدوات والتدريب متاحة.`
+                    : `Your quota resets on ${planLimitInfo.resetDate}. Until then, tools and practice remain available.`}
+                </p>
+                <Button variant="primary" onClick={() => navigate('/tools')}>
+                  {t.nav.tools}
+                </Button>
+              </>
+            )}
           </div>
         )}
 

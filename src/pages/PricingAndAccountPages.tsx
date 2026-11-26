@@ -19,6 +19,7 @@ import {
 } from '../components/ui/Primitives';
 import { useAuth } from '../lib/auth-client';
 import { useI18n, type ThemeMode } from '../lib/i18n';
+import { commerceVisible, followCheckoutUrl } from '../lib/appleNativeShell';
 import type { Locale } from '../shared/types';
 
 interface PlanItem {
@@ -113,8 +114,8 @@ export function PricingPage() {
         } else {
           setToast(t.errors.serverError);
         }
-      } else if (data.checkoutUrl) {
-        window.location.assign(data.checkoutUrl);
+      } else if (followCheckoutUrl(data.checkoutUrl)) {
+        window.location.assign(data.checkoutUrl as string);
       }
     } finally {
       setCheckingOutId(null);
@@ -122,6 +123,33 @@ export function PricingPage() {
   };
 
   const activePlanId = state.entitlements?.planId || 'free';
+
+  // داخل تطبيق iOS: لا أسعار ولا اشتراك ولا دفع (3.1.1). تظهر الباقة الحالية وطريق مجاني للمتابعة.
+  if (!commerceVisible()) {
+    return (
+      <AppShell>
+        <div className="max-w-xl w-full mx-auto px-4 sm:px-6 py-12 space-y-6 text-center" data-testid="native-plan-notice">
+          <h1 className="text-2xl font-bold text-[var(--ink)]">
+            {locale === 'ar' ? 'باقتك في وجاهة' : 'Your WIJAHA plan'}
+          </h1>
+          {state.authenticated && (
+            <p className="text-sm text-[var(--ink-2)]">
+              {locale === 'ar' ? 'الباقة الحالية:' : 'Current plan:'}{' '}
+              <span className="font-semibold text-[var(--ink)]">{activePlanId.toUpperCase()}</span>
+            </p>
+          )}
+          <p className="text-sm text-[var(--ink-2)] leading-relaxed">
+            {locale === 'ar'
+              ? 'الأدوات والتدريب والمخططات متاحة لك في التطبيق ضمن حدود باقتك.'
+              : 'Tools, practice and planners are available in the app within your plan.'}
+          </p>
+          <Button variant="primary" onClick={() => navigate('/tools')}>
+            {t.nav.tools}
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
@@ -529,12 +557,14 @@ export function AccountPage() {
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <Link to="/pricing">
-                  <Button variant="secondary" size="sm">
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>{t.nav.pricing}</span>
-                  </Button>
-                </Link>
+                {commerceVisible() && (
+                  <Link to="/pricing">
+                    <Button variant="secondary" size="sm">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>{t.nav.pricing}</span>
+                    </Button>
+                  </Link>
+                )}
                 {state.entitlements?.planId !== 'free' && (
                   <Button
                     variant="ghost"
@@ -547,7 +577,8 @@ export function AccountPage() {
               </div>
             </section>
 
-            {/* Invoices */}
+            {/* Invoices (web only: amounts are prices) */}
+            {commerceVisible() && (
             <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-3">
               <h2 className="text-sm font-semibold text-[var(--ink)]">{t.account.invoicesTitle}</h2>
               {invoices.length === 0 ? (
@@ -572,6 +603,7 @@ export function AccountPage() {
                 </div>
               )}
             </section>
+            )}
 
             {/* Data Portability & 14-Day Soft Delete (Section 21.5) */}
             <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 flex flex-wrap items-center justify-between gap-3">
