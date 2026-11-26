@@ -24,8 +24,10 @@
   --duo-sa-l: env(safe-area-inset-left, 0px);
   --duo-bar-h: 60px;
   --duo-gap: 44px;
-  /* the clock/battery widget ends at ~165px on the outer screen: the column starts 8px below it */
-  --duo-clock-end: 174px;
+  /* the clock/battery widget on the real outer screen runs from the top pill down to the battery ring
+     (~235px, owner's device shots 2026-11-26; ~165px in emulation), upright and sideways: the column
+     starts at 244px, or 8px below the widget height the native shell publishes when that is larger */
+  --duo-clock-end: max(244px, calc(var(--duo-widget-h, 0px) + 8px));
   --duo-glass: color-mix(in srgb, var(--surface) 88%, transparent);
   --duo-tint: var(--surface-2);
 }
@@ -162,6 +164,13 @@ html[data-device="duo"] .wj-duo-new {
     box-shadow: 0 12px 30px -12px rgba(15, 27, 51, 0.4);
     -webkit-backdrop-filter: blur(18px) saturate(1.5);
     backdrop-filter: blur(18px) saturate(1.5);
+    /* sideways the column under the clock is too short for «+» and the whole capsule: it ends above the
+       home indicator and scrolls inside itself */
+    max-height: calc(100dvh - var(--duo-clock-end) - 50px - 12px - var(--duo-sa-b) - 8px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
   }
   html[data-device="duo"][data-shell="app"]:not([data-widget-side="none"]) .wj-duo-tab {
     flex: none;
