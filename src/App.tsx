@@ -24,6 +24,7 @@ import {
   ServiceRequestPage,
 } from './pages/ExpertsPage';
 import { HomePage } from './pages/HomePage';
+import { NativeAuthPage } from './pages/NativeAuthPage';
 import {
   PracticeListPage,
   SimulationReportPage,
@@ -113,6 +114,7 @@ export default function App() {
             <Route path="/org" element={<OrgPage />} />
             <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
+            <Route path="/auth/native" element={<NativeAuthPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/methodology" element={<MethodologyPage />} />
             <Route path="/legal/terms" element={<LegalPage kind="terms" />} />

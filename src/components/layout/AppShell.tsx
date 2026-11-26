@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { isNativeApp } from '../../lib/native-auth';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Building2,
@@ -70,6 +71,7 @@ export function SignInModal() {
     setErrorMsg(null);
     const ok = await signInWithGoogle();
     setBusy(false);
+    if (isNativeApp()) return; // continues in the system browser, returns via deep link
     if (!ok) {
       setErrorMsg(
         locale === 'ar'

@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { signInWithPopup } from 'firebase/auth';
+import { isNativeApp, listenForNativeSignIn, startNativeGoogleSignIn } from './native-auth';
 import { auth, googleAuthProvider } from './firebase';
 import { useI18n, type ThemeMode } from './i18n';
 import type { Locale } from '../shared/types';
@@ -130,7 +131,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSignInModalOpen(false);
   }, []);
 
+  useEffect(() => {
+    listenForNativeSignIn();
+  }, []);
+
   const signInWithGoogle = useCallback(async (): Promise<boolean> => {
+    if (isNativeApp()) {
+      // Inside the app: Google sign-in runs in the system browser and returns by deep link.
+      await startNativeGoogleSignIn();
+      return false;
+    }
     if (!auth || !googleAuthProvider) {
       return false;
     }

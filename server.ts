@@ -469,6 +469,89 @@ export async function buildExpressApp() {
     }
   });
 
+  // Native app sign-in handoff (Capacitor Android/iOS wrappers).
+  // Google blocks OAuth inside embedded WebViews, so the app opens /auth/native in the
+  // system browser. After Google sign-in there, the browser asks for a one-time code bound
+  // to a PKCE-style challenge that only the app knows, then hands the code back to the app
+  // through a deep link. The app exchanges code + verifier for its own session cookie.
+  const NATIVE_HANDOFF_PREFIX = 'native-handoff:';
+  app.post('/api/auth/native-handoff', async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.actor) {
+        sendApiError(res, 401, 'UNAUTHORIZED', 'auth.dialogTitle');
+        return;
+      }
+      const challenge = String(req.body?.challenge || '');
+      if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
+        sendApiError(res, 400, 'INVALID_CHALLENGE', 'errors.internalError');
+        return;
+      }
+      const code = crypto.randomBytes(32).toString('base64url');
+      await db.insert(magicLinks).values({
+        id: `nh_${crypto.randomUUID()}`,
+        email: `${NATIVE_HANDOFF_PREFIX}${req.actor.uid}|${req.actor.activeOrgId}|${challenge}`,
+        codeHash: hashToken(code),
+        expiresAt: new Date(Date.now() + 3 * 60_000),
+      });
+      res.json({ ok: true, code });
+    } catch (error) {
+      console.error('/api/auth/native-handoff failed:', error);
+      sendApiError(res, 500, 'HANDOFF_FAILED', 'errors.internalError');
+    }
+  });
+
+  app.get('/api/auth/native-exchange', async (req, res) => {
+    const fail = () => res.redirect(302, '/?native_signin=failed');
+    try {
+      const code = String(req.query.code || '');
+      const verifier = String(req.query.verifier || '');
+      if (!/^[A-Za-z0-9_-]{43}$/.test(code) || !/^[A-Za-z0-9_-]{43,128}$/.test(verifier)) {
+        fail();
+        return;
+      }
+      const ipAllowed = await checkSharedRateLimit(`native_exchange_ip:${hashIp(req.ip)}`, 20, 15 * 60_000);
+      if (!ipAllowed) {
+        fail();
+        return;
+      }
+      const now = new Date();
+      const [row] = await db
+        .update(magicLinks)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(magicLinks.codeHash, hashToken(code)),
+            isNull(magicLinks.consumedAt),
+            isNull(magicLinks.invalidatedAt),
+            gt(magicLinks.expiresAt, now),
+          ),
+        )
+        .returning();
+      if (!row || !row.email.startsWith(NATIVE_HANDOFF_PREFIX)) {
+        fail();
+        return;
+      }
+      const [uid, orgId, challenge] = row.email.slice(NATIVE_HANDOFF_PREFIX.length).split('|');
+      const expected = crypto.createHash('sha256').update(verifier).digest('base64url');
+      if (
+        !uid ||
+        !orgId ||
+        !challenge ||
+        challenge.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(challenge), Buffer.from(expected))
+      ) {
+        fail();
+        return;
+      }
+      await createSessionCookie(res, uid, orgId);
+      await logAnalytics('signup_completed', 'ar', orgId, undefined, { method: 'google_native_handoff' });
+      res.redirect(302, '/');
+    } catch (error) {
+      console.error('/api/auth/native-exchange failed:', error);
+      fail();
+    }
+  });
+
   app.post('/api/auth/magic-link', async (req, res) => {
     try {
       const email = String(req.body?.email || '').trim().toLowerCase();
