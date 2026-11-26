@@ -469,3 +469,33 @@ html[data-device="duo"][data-shell="app"] .wj-header {
     bottom: calc(16px + var(--duo-sa-b));
   }
 }
+
+/* ==========================================================================
+   Owner notes 2026-11-26: nothing under the clock, equal panes on the hinge, one dark capsule.
+   - Inner landscape in the app: iOS can report a zero right inset while the clock sits in the
+     top-right corner (duo-markers.ts then calls the side "right"); the clock column is kept there.
+   - Inner landscape: both panes are the same width (the margin on both sides is the clock column's),
+     so the gap sits exactly on the hinge (50vw).
+   - The navigation capsule in the clock column is dark, as in the other apps; labels stay for
+     screen readers.
+   ========================================================================== */
+@media screen and (orientation: landscape) and (min-width: 860px) and (max-width: 1000px) and (min-height: 500px) and (max-height: 760px) {
+  :root[data-device="duo"][data-shell="app"][data-widget-side="right"] { --duo-sa-r: max(env(safe-area-inset-right, 0px), 84px); }
+}
+@media screen and (orientation: landscape) and (min-width: 800px) and (min-height: 521px) {
+  :root[data-device="duo"] { --duo-side: max(var(--duo-sa-r), var(--duo-sa-l)); }
+  html[data-device="duo"] .wj-shell { padding-left: var(--duo-side); padding-right: var(--duo-side); }
+  html[dir][data-device="duo"] .wj-shell {
+    grid-template-columns: calc(50vw - var(--duo-gap) / 2 - var(--duo-side)) calc(50vw - var(--duo-gap) / 2 - var(--duo-side));
+  }
+}
+html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-bar {
+  background: rgb(15 23 42 / 0.86);
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 12px 30px rgb(10 14 12 / 0.28);
+}
+html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) .wj-duo-tab { color: rgb(255 255 255 / 0.82); }
+html[data-device="duo"][data-shell="app"]:is([data-widget-side="right"], [data-widget-side="left"]) :is(.wj-duo-tab[aria-current="page"], .wj-duo-tab[aria-expanded="true"]) {
+  color: #fff;
+  background: rgb(255 255 255 / 0.16);
+}
