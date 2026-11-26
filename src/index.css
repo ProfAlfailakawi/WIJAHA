@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./styles/duo.css";
 @import "./styles/dock-motion.css";
+@import "./styles/visual-wave.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
@@ -15,6 +16,7 @@
   --radius-lg: 6px;
   --radius-xl: 8px;
   --radius-2xl: 12px;
+  --radius-3xl: 16px;
   --font-mono: "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -238,38 +240,45 @@ html[lang="en"] .wj-display { font-family: "Cormorant Garamond", Georgia, serif;
   .no-print { display: none !important; }
 }
 
-/* ================= v2: vivid infographic identity ================= */
+/* ================= v2 → "one night diwan": one token system =================
+ * The infographic accents now sit inside the navy + gold court palette (muted sea, garnet, ink-navy, dusk),
+ * headings are ceremonial Amiri again, and corners share one scale with the v1 paper surfaces.
+ */
 :root {
-  --navy-1: #0A1330; --navy-2: #15275A; --navy-3: #1E3A8A;
-  --t-gold: #FBF0D9; --t-teal: #DDF3EE; --t-rose: #FBE4E1; --t-indigo: #E4E8FB; --t-violet: #EEE5FA;
-  --c-gold: #8A5F10; --c-teal: #0F766E; --c-rose: #B4443A; --c-indigo: #3B4FC4; --c-violet: #6D3FC0;
+  --navy-1: #0A1330; --navy-2: #15275A; --navy-3: #1B3270;
+  --t-gold: #FBF0D9; --t-teal: #E3EEF0; --t-rose: #F6E6E2; --t-indigo: #E6EAF5; --t-violet: #EDE8F3;
+  --c-gold: #7A5410; --c-teal: #1F5F66; --c-rose: #8E3A2E; --c-indigo: #23387A; --c-violet: #5A3F7E;
+  --radius-card: 16px;
+  --radius-hero: 28px;
 }
 .dark {
-  --t-gold: #3A2F14; --t-teal: #0F332F; --t-rose: #3D1D1A; --t-indigo: #1C2452; --t-violet: #2B1D4D;
-  --c-gold: #F0C56A; --c-teal: #5EEAD4; --c-rose: #F5A097; --c-indigo: #A5B4FC; --c-violet: #C9A8F5;
+  --t-gold: #3A2F14; --t-teal: #13302F; --t-rose: #3A1F1C; --t-indigo: #1A2448; --t-violet: #2A2140;
+  --c-gold: #F0C56A; --c-teal: #8FD3CC; --c-rose: #F0AE9F; --c-indigo: #AFC0F5; --c-violet: #CDB8EE;
 }
 @layer base {
-  html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { font-family: "Alexandria", "IBM Plex Sans Arabic", sans-serif; font-weight: 700; letter-spacing: -0.01em; }
-  html[lang="en"] h1, html[lang="en"] h2 { font-family: "Alexandria", system-ui, sans-serif; font-weight: 700; }
+  html[lang="ar"] h1, html[lang="ar"] h2 { font-family: "Amiri", "IBM Plex Sans Arabic", serif; font-weight: 700; letter-spacing: 0; }
+  html[lang="ar"] h3 { font-family: "IBM Plex Sans Arabic", system-ui, sans-serif; font-weight: 700; letter-spacing: 0; }
+  html[lang="en"] h1, html[lang="en"] h2 { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 700; }
 }
 .v2-hero {
   /* The hero is navy in both themes, so pin the foreground tokens used inside it. */
   --primary-fg: #F7F2E8; --gold: #E8C882;
   position: relative; overflow: hidden; color: #F7F2E8;
   background: radial-gradient(900px 500px at 85% -10%, rgba(212,170,90,.28), transparent 60%),
-              radial-gradient(700px 500px at 0% 110%, rgba(45,212,191,.16), transparent 60%),
+              radial-gradient(700px 500px at 0% 110%, rgba(212,170,90,.10), transparent 60%),
               linear-gradient(160deg, var(--navy-1), var(--navy-2) 60%, var(--navy-3));
-  border-radius: 0 0 44px 44px;
+  border-radius: 0 0 var(--radius-hero) var(--radius-hero);
+  box-shadow: inset 0 -1px 0 rgba(232, 200, 130, .35);
 }
 .v2-pattern { position: absolute; inset: 0; opacity: .13; pointer-events: none; }
-.v2-search { background: #fff; border-radius: 22px; box-shadow: 0 0 0 6px rgba(255,255,255,.12), 0 30px 60px -20px rgba(0,0,0,.55); }
+.v2-search { background: #fff; border-radius: var(--radius-card); box-shadow: 0 0 0 6px rgba(255,255,255,.12), 0 30px 60px -20px rgba(0,0,0,.55); }
 .dark .v2-search { background: #101A33; }
 .v2-orb { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 999px;
   background: rgba(255,255,255,.07); border: 1px solid rgba(232,200,130,.45); color: #EBCB8B; backdrop-filter: blur(4px); }
 @keyframes v2-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .v2-float { animation: v2-float 6s ease-in-out infinite; }
-.v2-ico { display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; flex-shrink: 0; }
-.v2-card { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; transition: transform .25s, box-shadow .25s; }
+.v2-ico { display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; flex-shrink: 0; box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
+.v2-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--paper-edge); transition: transform .25s, box-shadow .25s; }
 .v2-card:hover { transform: translateY(-4px); box-shadow: 0 24px 48px -28px rgba(15,27,51,.35); }
 .v2-kicker { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 999px; background: var(--t-gold); color: var(--c-gold); font-size: .8rem; font-weight: 700; }
 .v2-step-line { position: absolute; top: 44px; inset-inline: 10%; border-top: 2px dashed var(--gold-soft); }

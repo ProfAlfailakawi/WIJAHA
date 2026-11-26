@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { Dialog } from '../../components/ui/Primitives';
 import { tr } from '../../components/visuals/svg-kit.tsx';
 import { useI18n } from '../../lib/i18n';
+import { OpsRoom } from '../../components/visuals/OpsRoom';
 import { applyDelay, buildSchedule, EMERGENCIES, formatCountdown, statusAt, TEMPLATES, type Emergency, type Step } from '../../shared/tools/live.ts';
 import { btn, btnPrimary, card, input, Page, ToolHero } from './ui';
 
@@ -106,6 +107,8 @@ export function LivePage() {
             </button>
           </div>
         </section>
+
+        <OpsRoom steps={steps} status={status} now={now} emergency={emergency !== null} ar={ar} title={title} />
 
         <section className={`${card} space-y-4`} aria-live="polite" data-testid="live-status">
           <div className="flex flex-wrap items-center justify-between gap-3">

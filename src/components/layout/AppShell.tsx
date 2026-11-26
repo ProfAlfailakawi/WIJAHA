@@ -20,6 +20,7 @@ import { BRAND } from '../../config/brand';
 import { useAuth } from '../../lib/auth-client';
 import { useI18n } from '../../lib/i18n';
 import { Button, Dialog, OfflineBanner, WijahaEmblem } from '../ui/Primitives';
+import { StarThread } from './StarThread';
 
 export function SignInModal() {
   const { t, locale } = useI18n();
@@ -272,6 +273,15 @@ export function AppShell({
 
   // Spec §7: the header carries no menu. Other destinations live in the footer and inside results.
   const navItems = state.authenticated ? [{ to: '/projects', label: t.nav.myProjects }] : [];
+  // Studios and tools, as links only, so visitors on desktop can find them (they also live in the footer).
+  const toolItems: Array<{ to: string; label: string; wide?: boolean }> = [
+    { to: '/seating', label: t.nav.seating },
+    { to: '/occasions', label: t.nav.occasions },
+    { to: '/visuals', label: t.nav.visuals },
+    { to: '/showcase', label: locale === 'ar' ? 'المعرض ثلاثي الأبعاد' : '3D showcase', wide: true },
+    { to: '/live', label: locale === 'ar' ? 'وجاهة مباشر' : 'Protocol LIVE', wide: true },
+    { to: '/tools', label: t.nav.tools },
+  ];
 
   return (
     <div className="wj-shell min-h-screen flex flex-col bg-[var(--bg)] text-[var(--ink)]">
@@ -311,6 +321,23 @@ export function AppShell({
                   key={item.to}
                   to={item.to}
                   className={`text-sm whitespace-nowrap transition-colors py-2 ${
+                    active
+                      ? 'text-[var(--ink)] font-semibold border-b-2 border-[var(--gold)]'
+                      : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+            {toolItems.map((item) => {
+              const active = location.pathname.startsWith(item.to);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  aria-current={active ? 'page' : undefined}
+                  className={`wj-tool-link ${item.wide ? 'hidden xl:inline-flex' : 'hidden lg:inline-flex'} text-sm whitespace-nowrap transition-colors py-2 ${
                     active
                       ? 'text-[var(--ink)] font-semibold border-b-2 border-[var(--gold)]'
                       : 'text-[var(--ink-2)] hover:text-[var(--ink)]'
@@ -495,6 +522,7 @@ export function AppShell({
           </div>
         )}
       </header>
+      <StarThread />
 
       <main id="main-content" className="wj-main flex-1 flex flex-col">
         {children}

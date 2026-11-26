@@ -21,6 +21,22 @@ export interface HallSeat {
 
 export type CameraPreset = 'overview' | 'chief' | 'host' | 'door';
 
+export interface HallSceneOptions {
+  /** false: no orbit controls or picking (used as a decorative backdrop). Default true. */
+  interactive?: boolean;
+  /** false: hide the floating name labels. Default true. */
+  labels?: boolean;
+}
+
+interface Walk {
+  id: string;
+  path: THREE.Vector3[];
+  lengths: number[];
+  total: number;
+  t0: number;
+  speed: number;
+}
+
 export interface HallState {
   plan: Plan;
   seats: HallSeat[];
@@ -31,6 +47,10 @@ export interface HallState {
 
 interface Person {
   group: THREE.Group;
+  /** The figure alone (inside `group`), moved on its own while a guest walks in. */
+  body: THREE.Group;
+  thighs: THREE.Mesh;
+  legs: THREE.Group;
   chair: THREE.Group;
   label: THREE.Sprite;
   ring: THREE.Mesh;
@@ -73,9 +93,13 @@ export class HallScene {
   private state: HallState | null = null;
   private labelKey = new Map<string, string>();
   private reduce: boolean;
+  private walks: Walk[] = [];
+  private walkDone: (() => void) | null = null;
+  private readonly opts: Required<HallSceneOptions>;
   onPick: ((id: string) => void) | null = null;
 
-  constructor(private host: HTMLElement) {
+  constructor(private host: HTMLElement, opts: HallSceneOptions = {}) {
+    this.opts = { interactive: opts.interactive ?? true, labels: opts.labels ?? true };
     this.reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -87,7 +111,7 @@ export class HallScene {
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
-    this.renderer.domElement.style.touchAction = 'none';
+    this.renderer.domElement.style.touchAction = this.opts.interactive ? 'none' : 'auto';
     this.renderer.domElement.setAttribute('data-testid', 'hall3d-canvas');
     host.appendChild(this.renderer.domElement);
 
@@ -102,6 +126,7 @@ export class HallScene {
     this.controls.maxDistance = 20;
     this.controls.autoRotate = !this.reduce;
     this.controls.autoRotateSpeed = 0.35;
+    this.controls.enabled = this.opts.interactive;
     this.controls.addEventListener('start', () => {
       this.controls.autoRotate = false;
       this.tween = null;
@@ -123,6 +148,7 @@ export class HallScene {
       downY = e.clientY;
     });
     el.addEventListener('pointerup', (e) => {
+      if (!this.opts.interactive) return;
       if (performance.now() - downAt < 350 && Math.hypot(e.clientX - downX, e.clientY - downY) < 6) this.pick(e);
     });
   }
@@ -349,7 +375,15 @@ export class HallScene {
     const sash = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 8, 32), new THREE.MeshStandardMaterial({ color: GOLD, metalness: 0.8, roughness: 0.3 }));
     sash.rotation.x = Math.PI / 2;
     sash.position.y = 0.82;
-    group.add(torso, shoulders, head, thighs);
+    // Standing legs, shown only while the guest walks in (the seated figure uses `thighs`).
+    const legs = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.075, 0.42, 4, 10), mat);
+      leg.position.set(sx * 0.09, 0.3, 0);
+      legs.add(leg);
+    }
+    legs.visible = false;
+    group.add(torso, shoulders, head, thighs, legs);
     if (tier !== 'guest') group.add(sash);
     group.traverse((n) => ((n as THREE.Mesh).isMesh ? ((n as THREE.Mesh).castShadow = true) : undefined));
     group.position.y = 0;
@@ -359,14 +393,16 @@ export class HallScene {
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
     label.position.set(0, 1.85, 0);
     label.renderOrder = 10;
+    label.visible = this.opts.labels;
     const chair = this.makeChair();
     const outer = new THREE.Group();
     outer.add(chair, group, ring, label);
     this.peopleGroup.add(outer);
-    return { group: outer, chair, label, ring, target: new THREE.Vector3(), targetYaw: 0, key: seat.id };
+    return { group: outer, body: group, thighs, legs, chair, label, ring, target: new THREE.Vector3(), targetYaw: 0, key: seat.id };
   }
 
   private applyLabel(p: Person, seat: HallSeat, accent: string) {
+    if (!this.opts.labels) return;
     const key = `${seat.label}|${seat.role ?? ''}|${this.state?.rtl ? 1 : 0}|${accent}`;
     if (this.labelKey.get(seat.id) === key) return;
     this.labelKey.set(seat.id, key);
@@ -508,9 +544,112 @@ export class HallScene {
       const ringM = p.ring.material as THREE.MeshBasicMaterial;
       if (ringM.opacity > 0.9) ringM.opacity = 0.75 + 0.2 * Math.sin(now / 250);
     }
+    if (this.walks.length) this.stepWalks(now);
     if (this.flame && this.flame.intensity > 0 && !this.reduce) this.flame.intensity = 1.1 + 0.25 * Math.sin(now / 90) * Math.sin(now / 37);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // ----------------------------------------------------------------- guests enter
+  /** The drawing surface, e.g. for recording a clip with MediaRecorder. */
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  private resetBody(p: Person) {
+    p.body.position.set(0, 0, 0);
+    p.body.rotation.set(0, 0, 0);
+    p.body.visible = true;
+    p.legs.visible = false;
+    p.thighs.visible = true;
+    p.label.position.set(0, 1.85, 0);
+  }
+
+  /**
+   * Walk every guest in from the door to his seat, one after another in order of precedence (rank 1 first).
+   * Each figure is moved inside its own seat group, so seat data and the plan never change. Resolves when all
+   * are seated (immediately with reduced motion).
+   */
+  walkIn(): Promise<void> {
+    this.walkDone?.();
+    this.walks = [];
+    for (const p of this.people.values()) this.resetBody(p);
+    const seats = [...(this.state?.seats ?? [])].sort((a, b) => a.rank - b.rank);
+    if (this.reduce || !seats.length) return Promise.resolve();
+    const door = new THREE.Vector3(0, 0, D / 2 + 0.6);
+    const inside = new THREE.Vector3(0, 0, D / 2 - 0.9);
+    const now = performance.now();
+    seats.forEach((seat, i) => {
+      const p = this.people.get(seat.id);
+      if (!p) return;
+      const end = new THREE.Vector3(wx(seat.x), 0, wz(seat.y));
+      // Go round the outside of the table: along a circle about the room centre, a little beyond the seat.
+      const r = Math.min(Math.hypot(end.x, end.z) + 0.75, Math.min(W, D) / 2 - 0.35);
+      const a0 = Math.atan2(inside.z, inside.x);
+      let a1 = Math.atan2(end.z, end.x);
+      let da = a1 - a0;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      a1 = a0 + da;
+      const path = [door, inside];
+      const steps = Math.max(1, Math.ceil(Math.abs(da) / 0.25));
+      for (let k = 0; k <= steps; k++) {
+        const a = a0 + (da * k) / steps;
+        path.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
+      }
+      path.push(end);
+      const lengths = [0];
+      for (let k = 1; k < path.length; k++) lengths.push(lengths[k - 1] + path[k].distanceTo(path[k - 1]));
+      this.walks.push({ id: seat.id, path, lengths, total: lengths[lengths.length - 1], t0: now + i * 650, speed: 2.1 });
+      p.body.visible = false;
+      p.label.visible = false;
+    });
+    this.requestFrame();
+    return new Promise((resolve) => {
+      this.walkDone = resolve;
+    });
+  }
+
+  private stepWalks(now: number) {
+    const tmp = new THREE.Vector3();
+    let active = 0;
+    for (const w of this.walks) {
+      const p = this.people.get(w.id);
+      if (!p) continue;
+      const dist = ((now - w.t0) / 1000) * w.speed;
+      if (dist < 0) {
+        active++;
+        continue;
+      }
+      if (dist >= w.total) {
+        if (!p.body.visible || p.legs.visible) {
+          this.resetBody(p);
+          p.label.visible = this.opts.labels;
+        }
+        continue;
+      }
+      active++;
+      let k = 1;
+      while (k < w.lengths.length - 1 && w.lengths[k] < dist) k++;
+      const segK = (dist - w.lengths[k - 1]) / Math.max(1e-6, w.lengths[k] - w.lengths[k - 1]);
+      tmp.lerpVectors(w.path[k - 1], w.path[k], segK);
+      const heading = Math.atan2(w.path[k].x - w.path[k - 1].x, w.path[k].z - w.path[k - 1].z);
+      // World to seat-group local space (the group sits at the seat and is rotated by its yaw).
+      p.group.updateMatrixWorld();
+      const local = p.group.worldToLocal(tmp.clone());
+      p.body.visible = true;
+      p.legs.visible = true;
+      p.thighs.visible = false;
+      p.body.position.set(local.x, 0.32 + Math.abs(Math.sin(dist * 5)) * 0.03, local.z);
+      p.body.rotation.y = heading - p.group.rotation.y;
+      p.label.visible = this.opts.labels;
+      p.label.position.set(local.x, 2.15, local.z);
+    }
+    if (!active) {
+      this.walks = [];
+      const done = this.walkDone;
+      this.walkDone = null;
+      done?.();
+    }
   }
 
   /** PNG of the current view (rendered synchronously first, so no preserveDrawingBuffer is needed). */
@@ -520,6 +659,8 @@ export class HallScene {
   }
 
   dispose() {
+    this.walkDone?.();
+    this.walkDone = null;
     this.disposed = true;
     this.stop();
     this.controls.dispose();

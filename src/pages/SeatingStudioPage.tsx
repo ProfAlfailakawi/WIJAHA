@@ -6,6 +6,7 @@ import { NameCardPage, CARDS_PER_PAGE, type CardPerson } from '../components/vis
 import { SeatingFloorplan, LAYOUT_NAMES, type FloorSeat } from '../components/visuals/SeatingFloorplan';
 import { tr } from '../components/visuals/svg-kit.tsx';
 import { Hall3D, type Hall3DHandle } from '../components/three/Hall3D';
+import { GuestsEnter } from '../components/visuals/GuestsEnter';
 import type { CameraPreset, HallSeat } from '../components/three/hall-scene.ts';
 import { useI18n } from '../lib/i18n';
 import { MAX_GUESTS, parseGuestFile, parseGuestText } from '../shared/visuals/guest-import.ts';
@@ -344,6 +345,7 @@ export function SeatingStudioPage() {
                 ) : (
                   <>
                     <Hall3D ref={hallRef} plan={plan} seats={hallSeats} selectedId={selected} warnIds={warnIds} rtl={ar} preset={preset} presetNonce={presetNonce} onPick={(id) => setSelected(id)} onUnsupported={() => setNo3d(true)} ariaLabel={ar ? 'قاعة ثلاثية الأبعاد تدور بإصبعك' : 'Rotatable 3D hall'} />
+                    <GuestsEnter hall={hallRef} ar={ar} className="mt-2" />
                     <p className="mt-2 text-xs text-[var(--ink-3)]">{ar ? 'اسحب للتدوير، وقرّب بالقرص، وانقر ضيفاً لتحديده. تبديل المقاعد يتم من المخطط الثنائي.' : 'Drag to rotate, pinch to zoom, tap a guest to select. Swap seats in the 2D plan.'}</p>
                   </>
                 )

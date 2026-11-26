@@ -5,6 +5,7 @@ import { Dialog } from '../components/ui/Primitives';
 import { downloadBlob } from '../components/visuals/export.ts';
 import { tr } from '../components/visuals/svg-kit.tsx';
 import { useI18n } from '../lib/i18n';
+import { PartnersGlobe } from '../components/visuals/PartnersGlobe';
 import { COUNTRY_NAMES, COVERED, fallsOnWeekend, greetingDraft, makeIcs, SOURCE_LINKS, upcomingOccasions, type Upcoming } from '../shared/occasions.ts';
 
 const KEY = 'wijaha.partners.v1';
@@ -141,6 +142,8 @@ export function OccasionsPage() {
             <span className="text-xs text-[var(--ink-3)] self-center">{ar ? 'اختيارك يُحفظ في متصفحك فقط.' : 'Your choice is saved in your browser only.'}</span>
           </div>
         </section>
+
+        <PartnersGlobe items={items} partners={partners} today={today} ar={ar} />
 
         {next.length > 0 && (
           <section aria-labelledby="next-h" className="space-y-3">
