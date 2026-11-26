@@ -254,6 +254,19 @@ export class PostureScene {
     this.frameOnce();
   }
 
+  /** Tween to a pose given as data (used by the practice counterpart, whose reactions are not in POSES). */
+  setPoseData(to: Pose, instant = false) {
+    this.figure.setSoleEmphasis(false);
+    if (instant || this.reduce) {
+      this.cur = to;
+      this.tween = null;
+      this.figure.apply(to);
+    } else {
+      this.tween = { from: this.cur, to, t0: performance.now(), dur: 850 };
+    }
+    this.frameOnce();
+  }
+
   resize() {
     const w = Math.max(1, this.host.clientWidth);
     const h = Math.max(1, this.host.clientHeight);

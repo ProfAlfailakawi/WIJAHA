@@ -5,6 +5,7 @@ import { AppShell } from '../../components/layout/AppShell';
 import { downloadPng } from '../../components/visuals/export.ts';
 import { tr } from '../../components/visuals/svg-kit.tsx';
 import { useI18n } from '../../lib/i18n';
+import { PassportSeals } from '../../components/visuals/PassportSeals';
 import { EXAM, MODULES, PASS_MARK } from '../../shared/tools/learn.ts';
 import { btn, btnPrimary, card, input, Page, ToolHero } from './ui';
 
@@ -129,7 +130,23 @@ export function LearnPage() {
             {result.passed && result.code ? (
               <>
                 <p className="text-[var(--ink)] font-semibold">{ar ? 'مبروك، نجحت!' : 'Congratulations, you passed!'}</p>
-                <CertificateSvg svgRef={svgRef} name={name.trim()} correct={result.correct} total={result.total} date={new Date().toISOString().slice(0, 10)} code={result.code} locale={locale} />
+                <PassportSeals
+                  ar={ar}
+                  testId="learn-passport"
+                  title={ar ? 'جواز وجاهة: أختام المحاور' : 'Wijaha passport: module seals'}
+                  items={MODULES.map((m, i) => ({
+                    key: m.id,
+                    code: String(i + 1),
+                    label: tr(locale, m.ar, m.en),
+                    stamped: !result.reviewModules.includes(m.id),
+                    value: '✓',
+                    emptyNote: ar ? 'يُستحسن مراجعته' : 'worth reviewing',
+                  }))}
+                />
+                <div className="wj-sheen" data-testid="cert-sheen">
+                  <CertificateSvg svgRef={svgRef} name={name.trim()} correct={result.correct} total={result.total} date={new Date().toISOString().slice(0, 10)} code={result.code} locale={locale} />
+                </div>
+                <p className="wj-cert-code">{ar ? 'رمز التحقق' : 'Verification code'}: <span className="font-mono" dir="ltr">{result.code}</span></p>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" className={btnPrimary} onClick={() => svgRef.current && void downloadPng(svgRef.current, 'wijaha-certificate', 1.5)} data-testid="cert-download">
                     <Download className="w-4 h-4" aria-hidden="true" />

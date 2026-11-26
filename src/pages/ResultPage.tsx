@@ -1,3 +1,4 @@
+import { InvitationEnvelope } from '../components/visuals/InvitationEnvelope';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -406,6 +407,7 @@ export function ResultPage() {
             aria-live="polite"
             className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-4"
           >
+            <InvitationEnvelope stage={streamStage} blocks={partialBlocks.length} />
             <div className="flex items-center gap-3 text-sm font-medium text-[var(--gold-ink)]">
               <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>{t.result.streaming[streamStage]}</span>
@@ -426,7 +428,9 @@ export function ResultPage() {
             )}
 
             {partialBlocks.map((b, idx) => (
-              <ResultBlockRenderer key={idx} block={b} blockIndex={idx} />
+              <div key={idx} className="wj-card-descend">
+                <ResultBlockRenderer block={b} blockIndex={idx} />
+              </div>
             ))}
           </div>
         )}

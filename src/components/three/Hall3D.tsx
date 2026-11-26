@@ -4,6 +4,10 @@ import type { Plan } from '../../shared/visuals/seating.ts';
 
 export interface Hall3DHandle {
   snapshot: () => Promise<Blob>;
+  /** Walk the guests in from the door in order of precedence; resolves when everyone is seated. */
+  walkIn: () => Promise<void>;
+  /** The WebGL canvas (null until three.js has loaded). */
+  canvas: () => HTMLCanvasElement | null;
 }
 
 export interface Hall3DProps {
@@ -18,6 +22,11 @@ export interface Hall3DProps {
   onUnsupported?: () => void;
   ariaLabel: string;
   className?: string;
+  /** Decorative mode: no orbiting/picking. Default true. */
+  interactive?: boolean;
+  /** Show name labels above the figures. Default true. */
+  labels?: boolean;
+  onReady?: () => void;
 }
 
 /** WebGL view of the hall. three.js is loaded on demand so it never weighs on the other pages. */
@@ -28,7 +37,15 @@ export const Hall3D = forwardRef<Hall3DHandle, Hall3DProps>(function Hall3D(prop
   const latest = useRef(props);
   latest.current = props;
 
-  useImperativeHandle(ref, () => ({ snapshot: () => (scene.current ? scene.current.snapshot() : Promise.reject(new Error('not ready'))) }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      snapshot: () => (scene.current ? scene.current.snapshot() : Promise.reject(new Error('not ready'))),
+      walkIn: () => (scene.current ? scene.current.walkIn() : Promise.resolve()),
+      canvas: () => scene.current?.canvas ?? null,
+    }),
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -43,7 +60,7 @@ export const Hall3D = forwardRef<Hall3DHandle, Hall3DProps>(function Hall3D(prop
       try {
         const mod = await import('./hall-scene.ts');
         if (!alive || !host.current) return;
-        const s = new mod.HallScene(host.current);
+        const s = new mod.HallScene(host.current, { interactive: latest.current.interactive ?? true, labels: latest.current.labels ?? true });
         scene.current = s;
         const p = latest.current;
         s.onPick = (id) => latest.current.onPick?.(id);
@@ -56,6 +73,7 @@ export const Hall3D = forwardRef<Hall3DHandle, Hall3DProps>(function Hall3D(prop
         io.observe(host.current);
         document.addEventListener('visibilitychange', onVis);
         setReady(true);
+        latest.current.onReady?.();
       } catch {
         latest.current.onUnsupported?.();
       }

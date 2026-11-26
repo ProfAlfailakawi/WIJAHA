@@ -13,6 +13,9 @@ import { BRAND } from '../config/brand';
 import { AppShell } from '../components/layout/AppShell';
 import { ExpertBridgeCard } from '../components/result-blocks/ResultBlocks';
 import { PostureViewer } from '../components/three/PostureViewer';
+import { CounterpartStage } from '../components/three/CounterpartStage';
+import { reactionFor } from '../shared/tools/counterpart.ts';
+import { PassportSeals } from '../components/visuals/PassportSeals';
 import { POSE_INFO } from '../shared/tools/poses.ts';
 import {
   Button,
@@ -205,6 +208,13 @@ export function SimulationRunnerPage() {
     [playableNodes, currentNodeId],
   );
   const currentIndex = playableNodes.findIndex((n) => n.id === currentNodeId);
+  // The counterpart's posture follows the chosen option's own rubric scores (display only).
+  const reaction = !stepOutcome
+    ? 'waiting'
+    : currentNode?.kind === 'choice'
+      ? reactionFor(currentNode.options?.find((o) => o.id === selectedOptionId)?.scores)
+      : 'approving';
+  const counterpart = scenario?.nodes.find((n) => n.persona)?.persona;
   const progressPct =
     playableNodes.length > 0
       ? Math.round(((Math.max(0, currentIndex) + 1) / playableNodes.length) * 100)
@@ -288,6 +298,12 @@ export function SimulationRunnerPage() {
             </header>
 
             <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-5">
+              <CounterpartStage
+                reaction={reaction}
+                ar={locale === 'ar'}
+                name={(currentNode.persona ?? counterpart) ? (locale === 'ar' ? (currentNode.persona ?? counterpart)!.nameAr : (currentNode.persona ?? counterpart)!.nameEn) : undefined}
+                role={(currentNode.persona ?? counterpart) ? (locale === 'ar' ? (currentNode.persona ?? counterpart)!.roleAr : (currentNode.persona ?? counterpart)!.roleEn) : undefined}
+              />
               {currentNode.persona && (
                 <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-4 py-3 text-xs space-y-0.5">
                   <p className="font-semibold text-[var(--ink)]">
@@ -455,6 +471,22 @@ export function SimulationReportPage() {
                 <Link to="/posture" className="text-sm font-semibold underline text-[var(--ink)]">{locale === 'ar' ? 'كل الوضعيات والمعرض ثلاثي الأبعاد' : 'All poses and the 3D showcase'}</Link>
               </section>
             )}
+
+            <PassportSeals
+              ar={locale === 'ar'}
+              title={locale === 'ar' ? 'جواز وجاهة: الكفايات السبع' : 'Wijaha passport: the seven competencies'}
+              items={(['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7'] as CompetencyCode[]).map((c) => {
+                const hit = report.competencyBreakdown.find((cb) => cb.competency === c);
+                return {
+                  key: c,
+                  code: c,
+                  label: t.practice.competencies[c].replace(/^C\d\s*·\s*/, ''),
+                  stamped: !!hit,
+                  value: hit ? `${hit.pct}%` : undefined,
+                  emptyNote: locale === 'ar' ? 'لم تُقيَّم في هذه الجلسة' : 'not assessed in this session',
+                };
+              })}
+            />
 
             {/* Competency Infographic Breakdown (No single aggregate score headline!) */}
             <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">

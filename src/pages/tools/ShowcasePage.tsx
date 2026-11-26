@@ -6,6 +6,7 @@ import { ShowcaseViewer, type ShowcaseHandle } from '../../components/three/Show
 import { downloadBlob } from '../../components/visuals/export.ts';
 import type { ShowcaseKind } from '../../components/three/showcase.ts';
 import { useI18n } from '../../lib/i18n';
+import { TableBuild } from '../../components/visuals/TableBuild';
 import { btn, card, Page, ToolHero } from './ui';
 
 const SCENES: Record<ShowcaseKind, { ar: string; en: string; pointsAr: string[]; pointsEn: string[] }> = {
@@ -66,6 +67,7 @@ export function ShowcasePage() {
             <Link to="/visuals" className={btn}>{ar ? 'المرئيات الثنائية القابلة للتصدير' : 'Exportable 2D visuals'}</Link>
           </section>
         </div>
+        <TableBuild ar={ar} />
       </Page>
     </AppShell>
   );

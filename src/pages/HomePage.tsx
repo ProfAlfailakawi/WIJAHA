@@ -12,6 +12,7 @@ import { WijahaEmblem } from '../components/ui/Primitives';
 import { useAuth } from '../lib/auth-client';
 import { useI18n } from '../lib/i18n';
 import { previewUnderstanding, type PreviewIcon } from '../lib/understanding-preview';
+import { HeroHall, type HeroHallHandle } from '../components/visuals/HeroHall';
 
 const DRAFT_QUERY_KEY = 'wijaha_draft_query';
 
@@ -117,6 +118,8 @@ export function HomePage() {
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const understood = useMemo(() => previewUnderstanding(query, locale), [query, locale]);
+  const heroHall = useRef<HeroHallHandle>(null);
+  const leaving = useRef(false);
 
   useEffect(() => {
     if (reducedMotion || query.length > 0) return;
@@ -135,7 +138,14 @@ export function HomePage() {
     const s = raw.trim();
     if (s.length < 2 || s.length > 2000) return;
     window.sessionStorage.setItem(DRAFT_QUERY_KEY, s);
-    navigate(`/r/live?q=${encodeURIComponent(s)}`);
+    const go = () => navigate(`/r/live?q=${encodeURIComponent(s)}`);
+    // Same destination as before; when the 3D hall is showing, the camera first settles into the
+    // principal guest's seat for a moment.
+    if (leaving.current) return;
+    if (heroHall.current?.settle()) {
+      leaving.current = true;
+      window.setTimeout(go, 700);
+    } else go();
   };
   const SendIcon = dir === 'rtl' ? ArrowLeft : ArrowRight;
   const exampleIcons = [UtensilsCrossed, Handshake, Plane];
@@ -173,6 +183,7 @@ export function HomePage() {
       {/* ============ HERO ============ */}
       <section className="v2-hero px-4 sm:px-6 pt-12 sm:pt-16 pb-16 sm:pb-20">
         <Pattern />
+        <HeroHall ref={heroHall} chips={understood} rtl={dir === 'rtl'} />
         {/* floating icon orbs (desktop) */}
         <div className="hidden lg:block" aria-hidden="true">
           {([[Handshake, '8%', '18%', 84, 0], [UtensilsCrossed, '14%', '62%', 64, 1.2], [Globe2, '84%', '16%', 72, 0.6], [Gift, '88%', '58%', 88, 1.8], [Armchair, '74%', '80%', 56, 2.4], [Mail, '22%', '86%', 52, 3]] as Array<[LucideIcon, string, string, number, number]>).map(([I, left, top, s, d], i) => (
