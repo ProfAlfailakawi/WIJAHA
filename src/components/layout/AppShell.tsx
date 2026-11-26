@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { BRAND } from '../../config/brand';
 import { useAuth } from '../../lib/auth-client';
+import { commerceVisible } from '../../lib/appleNativeShell';
 import { useI18n } from '../../lib/i18n';
 import { Button, Dialog, OfflineBanner, WijahaEmblem } from '../ui/Primitives';
 import { StarThread } from './StarThread';
@@ -478,7 +479,7 @@ export function AppShell({
               { to: '/tools', label: t.nav.tools },
               { to: '/check', label: t.nav.checkPlan },
               { to: '/experts', label: t.nav.experts },
-              { to: '/pricing', label: t.nav.pricing },
+              ...(commerceVisible() ? [{ to: '/pricing', label: t.nav.pricing }] : []),
               ...(isAdminActor ? [{ to: '/admin', label: t.nav.admin, icon: ShieldCheck }] : []),
             ].map((item) => (
               <button
@@ -558,9 +559,11 @@ export function AppShell({
             <Link to="/experts" className="hover:text-[var(--ink)] transition-colors">
               {t.footer.experts}
             </Link>
-            <Link to="/pricing" className="hover:text-[var(--ink)] transition-colors">
-              {t.footer.pricing}
-            </Link>
+            {commerceVisible() && (
+              <Link to="/pricing" className="hover:text-[var(--ink)] transition-colors">
+                {t.footer.pricing}
+              </Link>
+            )}
             <Link to="/legal/privacy" className="hover:text-[var(--ink)] transition-colors">
               {t.footer.privacy}
             </Link>
