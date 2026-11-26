@@ -25,6 +25,7 @@ import {
 } from './pages/ExpertsPage';
 import { HomePage } from './pages/HomePage';
 import { NativeAuthPage } from './pages/NativeAuthPage';
+import { DeleteAccountPage } from './pages/DeleteAccountPage';
 import {
   PracticeListPage,
   SimulationReportPage,
@@ -120,6 +121,7 @@ export default function App() {
             <Route path="/legal/terms" element={<LegalPage kind="terms" />} />
             <Route path="/legal/privacy" element={<LegalPage kind="privacy" />} />
             <Route path="/legal/disclaimer" element={<LegalPage kind="disclaimer" />} />
+            <Route path="/legal/delete-account" element={<DeleteAccountPage />} />
             <Route path="/dev/components" element={<DevComponentsPage />} />
 
             <Route path="/admin/*" element={<AdminPage />} />

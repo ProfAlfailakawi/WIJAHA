@@ -79,6 +79,7 @@ import {
   RuleStatusSchema,
 } from './src/server/knowledge/lifecycle.ts';
 import { checkSharedRateLimit } from './src/server/security/rate-limit.ts';
+import { schedulePurge } from './src/server/auth/account-purge.ts';
 import { cleanName, gradeExam, signCertificate, verifyCertificate } from './src/server/certificate/certificate.ts';
 import {
   applySecurityHeadersMiddleware,
@@ -3504,6 +3505,7 @@ async function startServer() {
     });
   }
 
+  schedulePurge();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`WIJAHA Modular Monolith listening on http://0.0.0.0:${PORT}`);
   });
