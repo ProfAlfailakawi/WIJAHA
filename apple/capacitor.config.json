@@ -1,0 +1,30 @@
+{
+  "appId": "com.dralfailakawi.wijaha",
+  "appName": "WIJAHA",
+  "webDir": "www",
+  "server": {
+    "url": "https://wijaha.web.app",
+    "errorPath": "offline.html",
+    "allowNavigation": [
+      "wijaha.web.app",
+      "wijaha.firebaseapp.com",
+      "*.googleapis.com",
+      "accounts.google.com"
+    ]
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#F5F0E6",
+    "scheme": "WIJAHA",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#0A1330",
+      "showSpinner": false
+    }
+  }
+}
