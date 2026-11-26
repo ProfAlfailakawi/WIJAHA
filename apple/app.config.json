@@ -1,0 +1,21 @@
+{
+  "repo": "WIJAHA",
+  "appId": "com.dralfailakawi.wijaha",
+  "nameAr": "وجاهة",
+  "nameEn": "WIJAHA",
+  "displayName": "وجاهة",
+  "url": "https://wijaha.web.app",
+  "allowNavigation": [
+    "wijaha.firebaseapp.com",
+    "*.googleapis.com",
+    "accounts.google.com"
+  ],
+  "icon": "public/icon.svg",
+  "iconInset": 0,
+  "background": "#F5F0E6",
+  "backgroundDark": "#0B1324",
+  "accent": "#0F1B33",
+  "lsCategory": "public.app-category.productivity",
+  "version": "1.0",
+  "build": 1
+}
