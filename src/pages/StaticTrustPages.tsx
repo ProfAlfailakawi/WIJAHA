@@ -218,6 +218,7 @@ export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }
   return (
     <AppShell>
       <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-12 space-y-6">
+{kind !== 'privacy' && (
         <div className="rounded-xl border border-[var(--warning)]/40 bg-[var(--surface-2)] p-4 flex items-center gap-3 text-xs font-semibold text-[var(--warning)]">
           <FileWarning className="w-4 h-4 shrink-0" />
           <span>
@@ -226,6 +227,7 @@ export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }
               : 'Draft — Requires Formal Legal Review Prior to Commercial Launch'}
           </span>
         </div>
+        )}
 
         <h1 className="text-2xl sm:text-3xl font-bold text-[var(--ink)]">
           {locale === 'ar' ? titles[kind].ar : titles[kind].en}
@@ -234,16 +236,24 @@ export function LegalPage({ kind }: { kind: 'terms' | 'privacy' | 'disclaimer' }
         <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-4 text-sm text-[var(--ink-2)] leading-relaxed">
           {kind === 'privacy' && (
             <>
-              <p>
-                {locale === 'ar'
-                  ? '1. تشفير البيانات وتقليلها: تُشفر نصوص الاستفسارات وإجابات المحاكاة الحرة، وتُجزّأ عناوين IP لأغراض الحماية من الإساءة فقط، ولا تُستخدم بيانات مشاريعك لتدريب نماذج خارجية.'
-                  : '1. Encryption & Minimization: User queries and simulation responses are encrypted at rest; IP addresses are one-way hashed strictly for rate limiting, and workspace data is never used to train external models.'}
-              </p>
-              <p>
-                {locale === 'ar'
-                  ? '2. حقوق صاحب البيانات: يمكنك تصدير كامل بياناتك بصيغة JSON من صفحة الحساب في أي وقت، وطلب حذف الحساب مع مهلة استرجاع 14 يوماً قبل الحذف النهائي.'
-                  : '2. Data Subject Rights: You may export all personal and workspace records as JSON at any time from Account Settings, and schedule account deletion with a 14-day recovery window.'}
-              </p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'من نحن' : 'Who we are'}</h2>
+              <p>{locale === 'ar' ? 'وجاهة خدمة تقدّمها شركة سكاي غيت للاستشارات التعليمية (SKY GATE EDUCATIONAL CONSULTING COMPANY) في دولة الكويت، وتعمل على الموقع wijaha.web.app وتطبيق iOS. للتواصل في شؤون الخصوصية: info@skygateeducation.com.' : 'WIJAHA is provided by SKY GATE EDUCATIONAL CONSULTING COMPANY, Kuwait, on wijaha.web.app and the iOS app. Privacy contact: info@skygateeducation.com.'}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'البيانات التي نجمعها' : 'Data we collect'}</h2>
+              <p>{locale === 'ar' ? 'بيانات الحساب: البريد الإلكتروني والاسم إن أدخلته، وعضويتك في جهة إن انضممت إليها. المحتوى الذي تكتبه: نصوص أسئلتك، والإجابات والخطط الناتجة، والمشاريع وإصداراتها، وإجاباتك في المحاكاة، وملاحظاتك، وطلبات خدمات الخبراء مع بريد التواصل. بيانات تشغيلية: جلسة الدخول، وعدّادات الاستخدام الشهرية، وسجل أمني بالعمليات الحساسة يتضمن بصمة أحادية الاتجاه لعنوان IP وليس العنوان نفسه.' : 'Account data: your email, your name if you enter it, and your organisation membership. Content you write: your questions, the answers and plans produced, saved projects and their versions, your practice answers, feedback, and expert-service requests with a contact email. Operational data: your sign-in session, monthly usage counters, and a security log of sensitive actions containing a one-way hash of your IP address, not the address itself.'}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'ما لا نجمعه' : 'What we do not collect'}</h2>
+              <p>{locale === 'ar' ? 'لا إعلانات ولا تتبّع عبر التطبيقات والمواقع ولا أدوات تحليلات من أطراف ثالثة. الصور في أداة فحص الصور تبقى على جهازك ولا تُرفع. الإملاء الصوتي يستخدم خاصية التعرّف على الكلام في جهازك ونظامه، ولا نحفظ التسجيل الصوتي. تطبيق iOS لا يبيع أي اشتراك ولا يجمع بيانات دفع.' : "No ads, no cross-app or cross-site tracking, no third-party analytics. Photos in the photo check tool stay on your device and are never uploaded. Voice dictation uses your device's built-in speech recognition and we do not store recordings. The iOS app sells nothing and collects no payment data."}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'كيف نستخدمها' : 'How we use it'}</h2>
+              <p>{locale === 'ar' ? 'لتقديم الخدمة فقط: فهم سؤالك وصياغة الإجابة، وحفظ مشاريعك ومشاركتها مع من تختار، وتطبيق حدود الباقة، وحماية الخدمة من الإساءة. لا تُستخدم بياناتك أو مشاريعك لتدريب نماذج خارجية، ولا تُباع.' : 'Only to provide the service: understanding your question and drafting the answer, saving and sharing your projects with people you choose, applying plan limits, and protecting the service from abuse. Your data and projects are never used to train external models and are never sold.'}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'من يعالجها نيابةً عنا' : 'Who processes it for us'}</h2>
+              <p>{locale === 'ar' ? 'Google Cloud (الاستضافة وقاعدة البيانات، وGoogle Gemini لفهم الأسئلة وصياغة الإجابات من خادمنا، ويُرسل إليه نص السؤال وحده). وعلى الموقع فقط: Stripe لمعالجة الدفع، ولا نحتفظ ببيانات البطاقة. ومزوّد البريد لإرسال رابط الدخول.' : 'Google Cloud (hosting and database, and Google Gemini, called from our server with only the question text, to understand questions and draft answers). On the website only: Stripe processes payments; we never store card details. An email provider sends your sign-in link.'}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'الحماية والاحتفاظ' : 'Security and retention'}</h2>
+              <p>{locale === 'ar' ? 'الاتصال مشفّر دائماً (HTTPS)، ونصوص الاستفسارات وإجابات المحاكاة الحرة مشفّرة أثناء التخزين، والوصول مقيّد بصلاحيات كل جهة. نحتفظ ببياناتك ما دام حسابك قائماً، ونحذفها عند حذف الحساب.' : "Connections are always encrypted (HTTPS), questions and free-text practice answers are encrypted at rest, and access is limited by each organisation's permissions. We keep your data while your account exists and delete it when the account is deleted."}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'حقوقك' : 'Your rights'}</h2>
+              <p>{locale === 'ar' ? 'يمكنك من صفحة الحساب تصدير كل بياناتك بصيغة JSON في أي وقت، وطلب حذف الحساب: تُسجَّل خارجاً فوراً، ويُحذف الحساب وبياناته نهائياً بعد مهلة استرجاع مدتها 14 يوماً. ولأي طلب آخر راسلنا على info@skygateeducation.com.' : 'From the Account page you can export all your data as JSON at any time and request account deletion: you are signed out at once and the account and its data are permanently erased after a 14-day recovery window. For any other request, email info@skygateeducation.com.'}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'الأطفال' : 'Children'}</h2>
+              <p>{locale === 'ar' ? 'الخدمة موجهة للبالغين العاملين في المراسم والضيافة، ولا نجمع بيانات الأطفال عن علم.' : "The service is meant for adults working in protocol and hospitality; we do not knowingly collect children's data."}</p>
+              <h2 className="text-base font-bold text-[var(--ink)] pt-2">{locale === 'ar' ? 'التغييرات' : 'Changes'}</h2>
+              <p>{locale === 'ar' ? 'إذا غيّرنا هذه السياسة نحدّث هذه الصفحة وتاريخها. آخر تحديث: 26 نوفمبر 2026.' : 'If we change this policy we update this page and its date. Last updated: 26 November 2026.'}</p>
             </>
           )}
 
