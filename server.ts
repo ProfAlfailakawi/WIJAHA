@@ -53,6 +53,7 @@ import {
 } from './src/server/ai/pipeline.ts';
 import { getAiProviderStatus } from './src/server/ai/provider.ts';
 import { understandQuery } from './src/server/ai/understanding.ts';
+import { AI_CONSENT_HEADER, aiRecipientForMode, checkAiConsent } from './src/shared/ai-consent.ts';
 import {
   canAccessResultRecord,
   canAccessSimulationRun,
@@ -146,6 +147,14 @@ function sendApiError(res: Response, status: number, code: string, messageKey: s
       ...extra,
     },
   });
+}
+
+/** 5.1.1(i)/5.1.2(i): no user text reaches the third-party AI provider unless the user agreed in-app first. */
+function rejectWithoutAiConsent(req: Request, res: Response): boolean {
+  const check = checkAiConsent(getAiProviderStatus().mode, req.headers[AI_CONSENT_HEADER]);
+  if (check.ok) return false;
+  sendApiError(res, 403, 'AI_CONSENT_REQUIRED', 'aiConsent.required', { recipient: check.recipient });
+  return true;
 }
 
 async function logAudit(
@@ -312,6 +321,7 @@ export async function buildExpressApp() {
       demoPrivilegedEnabled: demoPrivilegedEnabled,
       demoContentActive: await getDemoContentActive(),
       aiMode: getAiProviderStatus().mode,
+      aiRecipient: aiRecipientForMode(getAiProviderStatus().mode),
     });
   });
 
@@ -1219,6 +1229,7 @@ export async function buildExpressApp() {
     const startMs = Date.now();
     let reservedQuotaBucket: string | null = null;
     try {
+      if (rejectWithoutAiConsent(req, res)) return;
       const ipKey = `query:${req.actor?.uid || hashIp(req.ip)}`;
       if (!(await checkSharedRateLimit(ipKey, req.actor ? 40 : 25, 60_000))) {
         sendApiError(res, 429, 'RATE_LIMIT', 'errors.rateLimited');
@@ -1407,6 +1418,7 @@ export async function buildExpressApp() {
   app.post('/api/results/:id/refine', async (req: AuthenticatedRequest, res) => {
     let reservedQuotaBucket: string | null = null;
     try {
+      if (rejectWithoutAiConsent(req, res)) return;
       const ipKey = req.actor ? `refine:u:${req.actor.uid}` : `refine:ip:${hashIp(req.ip)}`;
       if (!(await checkSharedRateLimit(ipKey, 30, 60_000))) {
         sendApiError(res, 429, 'RATE_LIMITED', 'errors.rateLimited');

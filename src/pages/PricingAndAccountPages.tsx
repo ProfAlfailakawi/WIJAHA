@@ -19,6 +19,8 @@ import {
 } from '../components/ui/Primitives';
 import { useAuth } from '../lib/auth-client';
 import { useI18n, type ThemeMode } from '../lib/i18n';
+import { useAiConsent } from '../lib/ai-consent';
+import { AI_RECIPIENTS } from '../shared/ai-consent';
 import { commerceVisible, followCheckoutUrl } from '../lib/appleNativeShell';
 import type { Locale } from '../shared/types';
 
@@ -458,6 +460,8 @@ export function AccountPage() {
             </Button>
           )}
         </div>
+
+        <AiConsentSection />
 
         {!state.authenticated ? (
           <EmptyState
@@ -906,3 +910,43 @@ export function InviteAcceptPage() {
   );
 }
 
+
+function AiConsentSection() {
+  const { t, locale } = useI18n();
+  const { stored, withdrawAiConsent } = useAiConsent();
+  const [justWithdrawn, setJustWithdrawn] = useState(false);
+  const c = t.aiConsent;
+  return (
+    <section
+      data-testid="ai-consent-account"
+      className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 space-y-3"
+    >
+      <h2 className="text-base font-bold text-[var(--ink)]">{c.accountTitle}</h2>
+      {stored ? (
+        <>
+          <p className="text-sm text-[var(--ink-2)]">
+            {c.accountGranted}
+            {locale === 'ar' ? AI_RECIPIENTS[stored.recipient].nameAr : AI_RECIPIENTS[stored.recipient].nameEn}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              withdrawAiConsent();
+              setJustWithdrawn(true);
+            }}
+          >
+            {c.withdraw}
+          </Button>
+        </>
+      ) : (
+        <p className="text-sm text-[var(--ink-2)]" role="status">
+          {justWithdrawn ? c.withdrawn : c.accountNone}
+        </p>
+      )}
+      <Link to="/legal/privacy" className="inline-block text-sm underline text-[var(--ink)]">
+        {c.privacyLink}
+      </Link>
+    </section>
+  );
+}
