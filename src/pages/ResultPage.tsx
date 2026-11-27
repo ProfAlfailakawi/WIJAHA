@@ -32,6 +32,7 @@ import {
 import { useAuth } from '../lib/auth-client';
 import { useI18n } from '../lib/i18n';
 import { commerceVisible } from '../lib/appleNativeShell';
+import { useAiConsent } from '../lib/ai-consent';
 import type { Action, ResultBlock, WijahaResult } from '../shared/types';
 
 export function ResultPage() {
@@ -41,6 +42,8 @@ export function ResultPage() {
   const { locale, dir, t } = useI18n();
   const { state, openSignInModal, getBearerHeaders, refreshAuth } = useAuth();
   const navigate = useNavigate();
+  const { ensureAiConsent } = useAiConsent();
+  const [aiDeclined, setAiDeclined] = useState(false);
 
   const [streamStage, setStreamStage] = useState<'understanding' | 'retrieving' | 'generating' | null>(
     null,
@@ -79,6 +82,16 @@ export function ResultPage() {
       setResult(null);
       setPartialSummary([]);
       setPartialBlocks([]);
+      setAiDeclined(false);
+
+      // Consent gate: nothing leaves the device for the AI provider until the user agrees.
+      const consent = await ensureAiConsent();
+      if (!consent.ok) {
+        if (consent.reason === 'declined') setAiDeclined(true);
+        else setErrorMsg(t.aiConsent.unavailable);
+        return;
+      }
+      setAiDeclined(false);
       setStreamStage('understanding');
 
       try {
@@ -89,6 +102,7 @@ export function ResultPage() {
             'Content-Type': 'application/json',
             Accept: 'text/event-stream',
             ...getBearerHeaders(),
+            ...consent.headers,
           },
           body: JSON.stringify({ query: qText, locale }),
         });
@@ -162,7 +176,7 @@ export function ResultPage() {
         setStreamStage(null);
       }
     },
-    [getBearerHeaders, locale, navigate, refreshAuth, t.home.networkError],
+    [getBearerHeaders, locale, navigate, refreshAuth, t.home.networkError, ensureAiConsent, t.aiConsent.unavailable],
   );
 
   const fetchStoredResult = useCallback(
@@ -203,6 +217,13 @@ export function ResultPage() {
     elevateToHighSensitivity?: boolean;
   }) => {
     if (!result) return;
+    const consent = await ensureAiConsent();
+    if (!consent.ok) {
+      if (consent.reason === 'declined') setAiDeclined(true);
+      else setErrorMsg(t.aiConsent.unavailable);
+      return;
+    }
+    setAiDeclined(false);
     setRefining(true);
     try {
       const res = await fetch(`/api/results/${encodeURIComponent(result.id)}/refine`, {
@@ -211,6 +232,7 @@ export function ResultPage() {
         headers: {
           'Content-Type': 'application/json',
           ...getBearerHeaders(),
+          ...consent.headers,
         },
         body: JSON.stringify({
           locale,
@@ -405,6 +427,28 @@ export function ResultPage() {
                 </Button>
               </>
             )}
+          </div>
+        )}
+
+        {/* AI consent declined: nothing was sent; non-AI tools stay available */}
+        {aiDeclined && (
+          <div
+            role="status"
+            data-testid="ai-consent-declined"
+            className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6 space-y-3"
+          >
+            <h2 className="text-lg font-semibold text-[var(--ink)]">{t.aiConsent.declinedTitle}</h2>
+            <p className="text-sm text-[var(--ink-2)] leading-relaxed">{t.aiConsent.declinedBody}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="primary" onClick={() => navigate('/tools')}>
+                {t.aiConsent.openTools}
+              </Button>
+              {queryParam && resultId === 'live' && (
+                <Button variant="secondary" onClick={() => void runLiveStreamQuery(queryParam)}>
+                  {t.aiConsent.reconsider}
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

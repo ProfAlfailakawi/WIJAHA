@@ -314,5 +314,28 @@
   "notices": {
     "mockAiPreview": "Preview Mode: Results are generated from demo templates",
     "unassessedCompetency": "Not assessed in this session"
+  },
+  "aiConsent": {
+    "title": "Before your question is sent to an AI service",
+    "intro": "WIJAHA uses a third-party AI service to understand your question and draft the answer. Nothing is sent until you agree.",
+    "whatLabel": "What is sent",
+    "what": "The question text you type, any follow-up or clarification text you add to a result, the interface language, and the relevant protocol rules from the WIJAHA library. We do not send your name, email, organisation, or any account identifier.",
+    "whoLabel": "Who receives it",
+    "whyLabel": "Why",
+    "why": "Only to understand your request and draft a protocol answer grounded in our reviewed rules. The text is sent directly from the WIJAHA server, and the provider processes it under its commercial API terms, which do not allow using inputs to train its models, with protection equivalent to our privacy policy.",
+    "privacyLink": "Read the privacy policy",
+    "accept": "I agree, continue",
+    "decline": "No, thanks",
+    "declinedTitle": "Your question was not sent",
+    "declinedBody": "You chose not to share your question text with the AI service, so nothing was sent. WIJAHA’s other tools still work without AI: practice simulations, plan check, seating studio, occasions and learning.",
+    "reconsider": "Review consent",
+    "openTools": "Available tools",
+    "required": "Your consent to send text to the AI service is needed before continuing.",
+    "unavailable": "Could not check the service settings, so nothing was sent. Please try again.",
+    "accountTitle": "Sharing text with the AI service",
+    "accountGranted": "You agreed to send your question text to: ",
+    "accountNone": "No consent given on this device. We will ask at your first question.",
+    "withdraw": "Withdraw consent",
+    "withdrawn": "Consent withdrawn. No text will be sent until you agree again."
   }
 }

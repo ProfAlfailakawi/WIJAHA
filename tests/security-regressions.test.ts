@@ -1158,3 +1158,33 @@ test('C12: exporter rejects malicious non-enum locale injection', async () => {
     'exporter must reject invalid locale values before building HTML',
   );
 });
+
+test('Apple 5.1.1(i)/5.1.2(i): AI routes refuse requests without in-app consent for the live provider', async () => {
+  const srv = await startTestServer({
+    AI_PROVIDER: 'claude',
+    ANTHROPIC_API_KEY: 'test-key-not-real-0123456789abcdef',
+  });
+  try {
+    const cfg = (await (await fetch(`${srv.baseUrl}/api/config`)).json()) as { aiRecipient?: string };
+    assert.equal(cfg.aiRecipient, 'anthropic');
+
+    for (const [path, body] of [
+      ['/api/query', { query: 'كيف أستقبل وفداً رسمياً؟', locale: 'ar' }],
+      ['/api/results/res_does_not_matter/refine', { locale: 'ar', followupText: 'x' }],
+    ] as const) {
+      for (const header of [undefined, 'google', '1']) {
+        const res = await fetch(`${srv.baseUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(header ? { 'X-Wijaha-AI-Consent': header } : {}) },
+          body: JSON.stringify(body),
+        });
+        assert.equal(res.status, 403, `${path} with consent=${header}`);
+        const json = (await res.json()) as { error?: { code?: string; recipient?: string } };
+        assert.equal(json.error?.code, 'AI_CONSENT_REQUIRED');
+        assert.equal(json.error?.recipient, 'anthropic');
+      }
+    }
+  } finally {
+    await srv.close();
+  }
+});

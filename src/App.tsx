@@ -15,6 +15,7 @@ import { OccasionsPage } from './pages/OccasionsPage';
 import React, { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './lib/auth-client';
+import { AiConsentProvider } from './lib/ai-consent';
 import { I18nProvider, useI18n } from './lib/i18n';
 import { AdminPage } from './pages/AdminPage';
 import { CheckPlanPage } from './pages/CheckPlanPage';
@@ -77,6 +78,7 @@ export default function App() {
     <I18nProvider>
       <AuthProvider>
         <BrowserRouter>
+          <AiConsentProvider>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/r/:resultId" element={<ResultPage />} />
@@ -130,6 +132,7 @@ export default function App() {
             <Route path="/en/*" element={<LocalePrefixRedirect />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </AiConsentProvider>
         </BrowserRouter>
       </AuthProvider>
     </I18nProvider>
